@@ -3,7 +3,7 @@
 // Anti-flicker notes (egui can "blink" on Windows if left at defaults):
 // - glow renderer with vsync, no MSAA, no transparency;
 // - window stays hidden until the first frame is painted (eframe default) and
-//   uses a fixed dark background so there is no white flash on start/resize;
+//   uses a fixed background matching the light panels so there is no flash on start/resize;
 // - no continuous repaint: we only repaint on input, plus one slow timer for auto-lock;
 // - every container has a stable id so egui never has to re-measure (sizing pass)
 //   when the selection changes, which is what makes grids flash for a frame;
@@ -138,7 +138,7 @@ struct App {
 
 impl App {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        cc.egui_ctx.set_theme(egui::Theme::Dark);
+        cc.egui_ctx.set_theme(egui::Theme::Light);
         cc.egui_ctx.all_styles_mut(|style| {
             // No fade animations: they are a common source of visible flicker.
             style.animation_time = 0.0;
@@ -177,8 +177,8 @@ impl App {
 
 impl eframe::App for App {
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
-        // Same as the dark panel fill, so a resize never shows a different colour.
-        egui::Color32::from_gray(27).to_normalized_gamma_f32()
+        // Same as the light panel fill, so a resize never shows a different colour.
+        egui::Color32::from_gray(248).to_normalized_gamma_f32()
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
@@ -243,7 +243,7 @@ fn lock_ui(ui: &mut egui::Ui, lock: &mut LockScreen, path: &PathBuf) -> Option<V
                 }
             }
             // Fixed-height error line, so the layout doesn't jump when an error shows up.
-            ui.add_sized([400.0, 20.0], egui::Label::new(RichText::new(&lock.error).color(Color32::LIGHT_RED)));
+            ui.add_sized([400.0, 20.0], egui::Label::new(RichText::new(&lock.error).color(Color32::from_rgb(190, 30, 30))));
             ui.label(RichText::new(path.display().to_string()).small().weak());
 
             if submit {
@@ -609,7 +609,7 @@ impl OpenVault {
                 action = Some(TreeAction::ExportGroup(path.clone()));
             }
             if self.confirm_delete_group {
-                if ui.button(RichText::new("Really delete group?").color(Color32::LIGHT_RED)).clicked() {
+                if ui.button(RichText::new("Really delete group?").color(Color32::from_rgb(190, 30, 30))).clicked() {
                     self.vault.data.delete_group(&path);
                     self.selected_group = None;
                     self.confirm_delete_group = false;
@@ -657,7 +657,7 @@ impl OpenVault {
             if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                 apply = true;
             }
-            ui.add_sized([320.0, 18.0], egui::Label::new(RichText::new(&dlg.error).color(Color32::LIGHT_RED)));
+            ui.add_sized([320.0, 18.0], egui::Label::new(RichText::new(&dlg.error).color(Color32::from_rgb(190, 30, 30))));
             ui.horizontal(|ui| {
                 apply |= ui.button("OK").clicked();
                 close = ui.button("Cancel").clicked();
@@ -778,7 +778,7 @@ impl OpenVault {
                 do_connect = ui.add(egui::Button::new(RichText::new("Connect").strong())).clicked();
                 do_save = ui.button("Save").clicked();
                 if self.confirm_delete {
-                    do_delete = ui.button(RichText::new("Really delete?").color(Color32::LIGHT_RED)).clicked();
+                    do_delete = ui.button(RichText::new("Really delete?").color(Color32::from_rgb(190, 30, 30))).clicked();
                     if ui.button("Cancel").clicked() {
                         self.confirm_delete = false;
                     }
@@ -852,7 +852,7 @@ impl OpenVault {
                 r.request_focus();
             }
             ok |= r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-            ui.add_sized([320.0, 18.0], egui::Label::new(RichText::new(&dlg.error).color(Color32::LIGHT_RED)));
+            ui.add_sized([320.0, 18.0], egui::Label::new(RichText::new(&dlg.error).color(Color32::from_rgb(190, 30, 30))));
             ui.horizontal(|ui| {
                 ok |= ui.button("Import").clicked();
                 close = ui.button("Cancel").clicked();
@@ -905,7 +905,7 @@ impl OpenVault {
             ui.add(egui::TextEdit::singleline(&mut dlg.password).password(true).hint_text("Password for the file").desired_width(f32::INFINITY).id_salt("export_pw"));
             ui.add(egui::TextEdit::singleline(&mut dlg.confirm).password(true).hint_text("Repeat password").desired_width(f32::INFINITY).id_salt("export_pw2"));
             ui.checkbox(&mut dlg.move_after, "Move: remove them from this computer after exporting");
-            ui.add_sized([360.0, 18.0], egui::Label::new(RichText::new(&dlg.error).color(Color32::LIGHT_RED)));
+            ui.add_sized([360.0, 18.0], egui::Label::new(RichText::new(&dlg.error).color(Color32::from_rgb(190, 30, 30))));
             ui.horizontal(|ui| {
                 ok = ui.button("Export...").clicked();
                 close = ui.button("Cancel").clicked();

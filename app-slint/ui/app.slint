@@ -109,6 +109,7 @@ export component MainWindow inherits Window {
     preferred-width: 1000px;
     preferred-height: 720px;
     min-width: 720px;
+    in-out property <length> sidebar-width: 290px;
     min-height: 440px;
 
     in property <bool> locked: true;
@@ -217,7 +218,7 @@ export component MainWindow inherits Window {
             vertical-stretch: 1;
             // Connection list
             VerticalBox {
-                width: 290px;
+                width: root.sidebar-width;
                 LineEdit {
                     placeholder-text: "Search";
                     text <=> root.search;
@@ -273,7 +274,19 @@ export component MainWindow inherits Window {
                     }
                 }
             }
-            Rectangle { width: 1px; background: Palette.border; }
+            // Drag to resize the connection list
+            Rectangle {
+                width: 7px;
+                Rectangle { width: 1px; background: splitter.has-hover || splitter.pressed ? Palette.accent-background : Palette.border; }
+                splitter := TouchArea {
+                    mouse-cursor: ew-resize;
+                    moved => {
+                        if (self.pressed) {
+                            root.sidebar-width = clamp(root.sidebar-width + self.mouse-x - self.pressed-x, 180px, root.width - 540px);
+                        }
+                    }
+                }
+            }
 
             // Details
             if !root.has-draft && root.selected-group != "": VerticalBox {
@@ -328,7 +341,7 @@ export component MainWindow inherits Window {
                         VerticalBox {
                             alignment: start;
                             spacing: 8px;
-                            width: min(640px, root.width - 310px);
+                            width: min(640px, root.width - root.sidebar-width - 20px);
                             Field { label: "Name"; LineEdit { text <=> root.draft.name; } }
                             Field { label: "Group"; ComboBox { model: root.group-names; current-value <=> root.draft.group; } }
                             Field { label: "Host"; LineEdit { text <=> root.draft.host; } }
