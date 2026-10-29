@@ -27,7 +27,10 @@ Go to [Releases](../../releases):
   - Pick a connection's group in its **Group** field. In the egui app, you can also right-click a connection and choose **Move to group**.
 - Host, port, user, domain, password, RD Gateway, screen size, all monitors, clipboard/drive sharing, admin session, notes
 - Double-click a connection, or click **Connect**, to start the session
-- Import existing `.rdp` files
+- **Import** existing `.rdp` files, or `.rdm` export files with all their folders
+  - RDP entries, folders and usernames are imported. Other entry types (SSH, web, ...) are skipped.
+  - Passwords in `.rdm` files are encrypted by the program that made them, so they are not imported. Type them in again.
+  - Importing the same file twice does not create duplicates.
 - Encrypted backup, change master password, auto-lock after idle time
 
 ## How Connect works

@@ -155,7 +155,7 @@ export component MainWindow inherits Window {
         HorizontalBox {
             Button { text: "New connection"; clicked => { root.new-connection(); } }
             Button { text: "New group"; clicked => { root.new-group(); } }
-            Button { text: "Import .rdp"; clicked => { root.import-rdp(); } }
+            Button { text: "Import"; clicked => { root.import-rdp(); } }
             Button { text: "Backup"; clicked => { root.backup(); } }
             Button { text: "Change password"; clicked => { root.change-pw-open = true; } }
             Text { text: "Auto-lock (min):"; vertical-alignment: center; }

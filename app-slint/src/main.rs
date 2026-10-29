@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use rds_core::{default_vault_path, groups, idle, rdp, Connection, Secret, TreeRow, Vault};
+use rds_core::{default_vault_path, groups, idle, import, rdp, Connection, Secret, TreeRow, Vault};
 use slint::{ComponentHandle, ModelRc, SharedString, Timer, TimerMode, VecModel};
 use uuid::Uuid;
 
@@ -296,31 +296,26 @@ fn main() -> Result<(), slint::PlatformError> {
         move || {
             t();
             let ui = ui_w.unwrap();
-            let Some(files) = rfd::FileDialog::new().add_filter("Remote Desktop", &["rdp"]).pick_files() else { return };
+            let Some(files) = rfd::FileDialog::new()
+                .add_filter("Remote Desktop (.rdp, .rdm)", import::IMPORT_EXTENSIONS)
+                .pick_files()
+            else {
+                return;
+            };
             let mut st = s.borrow_mut();
             let Some(v) = st.vault.as_mut() else { return };
-            let mut n = 0;
-            let mut last = None;
-            for f in files {
-                match rdp::import_rdp(&f) {
-                    Ok(c) => {
-                        last = Some(c.clone());
-                        v.data.connections.push(c);
-                        n += 1;
-                    }
-                    Err(e) => ui.set_status(format!("{}: {e}", f.display()).into()),
-                }
-            }
-            if n > 0 {
-                let msg = match v.save() {
-                    Ok(()) => format!("Imported {n} connection(s) into \"Imported\""),
-                    Err(e) => e.to_string(),
-                };
-                ui.set_status(msg.into());
-                if let Some(c) = last {
-                    st.selected = Some(c.id);
-                    show_draft(&ui, &c);
-                }
+            let report = import::import_files(&mut v.data, &files);
+            let msg = match v.save() {
+                Ok(()) => report.message(),
+                Err(e) => e.to_string(),
+            };
+            ui.set_status(msg.into());
+            let last = report.last_id.and_then(|id| v.data.find(id).cloned());
+            if let Some(c) = last {
+                st.selected = Some(c.id);
+                st.selected_group = None;
+                ui.set_selected_group("".into());
+                show_draft(&ui, &c);
             }
             drop(st);
             refresh_list(&ui, &s);

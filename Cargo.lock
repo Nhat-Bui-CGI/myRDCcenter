@@ -4078,6 +4078,7 @@ dependencies = [
  "chacha20poly1305",
  "dirs",
  "getrandom 0.2.17",
+ "roxmltree",
  "serde",
  "serde_json",
  "uuid",

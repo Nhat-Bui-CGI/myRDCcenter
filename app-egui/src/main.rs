@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use eframe::egui::{self, Color32, RichText};
-use rds_core::{default_vault_path, groups, rdp, Connection, TreeRow, Vault};
+use rds_core::{default_vault_path, groups, import, rdp, Connection, TreeRow, Vault};
 use uuid::Uuid;
 
 const LABEL_WIDTH: f32 = 130.0;
@@ -278,7 +278,7 @@ impl OpenVault {
                     let group = self.current_group();
                     self.open_new_group(&group);
                 }
-                if ui.button("Import .rdp").clicked() {
+                if ui.button("Import").on_hover_text("Import .rdp or .rdm files").clicked() {
                     self.import();
                 }
                 if ui.button("Backup").clicked() {
@@ -713,25 +713,17 @@ impl OpenVault {
     }
 
     fn import(&mut self) {
-        let Some(files) = rfd::FileDialog::new().add_filter("Remote Desktop", &["rdp"]).pick_files() else { return };
-        let mut n = 0;
-        let mut last = None;
-        for f in files {
-            match rdp::import_rdp(&f) {
-                Ok(c) => {
-                    last = Some(c.id);
-                    self.vault.data.connections.push(c);
-                    n += 1;
-                }
-                Err(e) => self.status = format!("{}: {e}", f.display()),
-            }
+        let Some(files) = rfd::FileDialog::new().add_filter("Remote Desktop (.rdp, .rdm)", import::IMPORT_EXTENSIONS).pick_files()
+        else {
+            return;
+        };
+        let report = import::import_files(&mut self.vault.data, &files);
+        self.save_vault(&report.message());
+        if report.errors.is_empty() || report.added > 0 {
+            self.status = report.message();
         }
-        if n > 0 {
-            self.save();
-            self.status = format!("Imported {n} connection(s) into \"Imported\"");
-            if let Some(id) = last {
-                self.select(id);
-            }
+        if let Some(id) = report.last_id {
+            self.select(id);
         }
     }
 
