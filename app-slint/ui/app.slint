@@ -60,7 +60,7 @@ component LockScreen inherits Rectangle {
             VerticalLayout {
                 width: 320px;
                 spacing: 10px;
-                Text { text: "RDS-center"; font-size: 28px; horizontal-alignment: center; }
+                Text { text: "myRDCcenter"; font-size: 28px; horizontal-alignment: center; }
                 Text {
                     text: root.creating ? "Create a master password. It encrypts your vault and can't be recovered." : "Enter your master password to unlock.";
                     wrap: word-wrap;
@@ -91,7 +91,7 @@ component LockScreen inherits Rectangle {
 }
 
 export component MainWindow inherits Window {
-    title: "RDS-center";
+    title: "myRDCcenter";
     preferred-width: 1000px;
     preferred-height: 720px;
     min-width: 720px;

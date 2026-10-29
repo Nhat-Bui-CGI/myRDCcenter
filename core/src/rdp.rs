@@ -114,7 +114,7 @@ pub fn launch(c: &Connection) -> Result<(), String> {
 
 #[cfg(any(windows, target_os = "macos"))]
 fn write_temp_rdp(c: &Connection) -> Result<std::path::PathBuf, String> {
-    let path = std::env::temp_dir().join(format!("rds-center-{}.rdp", uuid::Uuid::new_v4()));
+    let path = std::env::temp_dir().join(format!("myrdccenter-{}.rdp", uuid::Uuid::new_v4()));
     let mut bytes = vec![0xFF, 0xFE];
     for u in build_rdp_file(c).encode_utf16() {
         bytes.extend_from_slice(&u.to_le_bytes());

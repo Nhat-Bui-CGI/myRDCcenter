@@ -1,4 +1,4 @@
-// RDS-center, Slint front-end.
+// myRDCcenter, Slint front-end.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::cell::RefCell;
@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use rds_core::{default_vault_path, groups, idle, import, rdp, Connection, Secret, TreeRow, Vault};
+use myrdc_core::{default_vault_path, groups, idle, import, rdp, Connection, Secret, TreeRow, Vault};
 use slint::{ComponentHandle, ModelRc, SharedString, Timer, TimerMode, VecModel};
 use uuid::Uuid;
 
@@ -328,8 +328,8 @@ fn main() -> Result<(), slint::PlatformError> {
             t();
             let ui = ui_w.unwrap();
             let Some(dest) = rfd::FileDialog::new()
-                .add_filter("RDS-center vault", &["rdsc"])
-                .set_file_name("rds-center-backup.rdsc")
+                .add_filter("myRDCcenter vault", &["rdsc"])
+                .set_file_name("myrdccenter-backup.rdsc")
                 .save_file()
             else {
                 return;

@@ -1,5 +1,5 @@
 [package]
-name = "rds-core"
+name = "myrdc-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

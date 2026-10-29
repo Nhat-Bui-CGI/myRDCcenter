@@ -26,8 +26,8 @@ jobs:
         run: |
           mkdir dist
           cd target/release
-          7z a ../../dist/RDS-center-egui-windows-x64.zip RDS-center-egui.exe
-          7z a ../../dist/RDS-center-slint-windows-x64.zip RDS-center-slint.exe
+          7z a ../../dist/myRDCcenter-egui-windows-x64.zip myRDCcenter-egui.exe
+          7z a ../../dist/myRDCcenter-slint-windows-x64.zip myRDCcenter-slint.exe
       - uses: actions/upload-artifact@v4
         with: { name: windows, path: dist/* }
 
@@ -41,9 +41,9 @@ jobs:
       - run: cargo build --release --workspace
       - name: Package
         run: |
-          mkdir -p dist pkg/RDS-center
-          cp target/release/RDS-center-egui target/release/RDS-center-slint README.md pkg/RDS-center/
-          tar -C pkg -czf dist/RDS-center-linux-x64.tar.gz RDS-center
+          mkdir -p dist pkg/myRDCcenter
+          cp target/release/myRDCcenter-egui target/release/myRDCcenter-slint README.md pkg/myRDCcenter/
+          tar -C pkg -czf dist/myRDCcenter-linux-x64.tar.gz myRDCcenter
       - uses: actions/upload-artifact@v4
         with: { name: linux, path: dist/* }
 
@@ -62,16 +62,16 @@ jobs:
           mkdir dist
           VERSION=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
           for app in egui slint; do
-            BIN=RDS-center-$app
-            APP="dist/$app/RDS-center ($app).app"
+            BIN=myRDCcenter-$app
+            APP="dist/$app/myRDCcenter ($app).app"
             mkdir -p "$APP/Contents/MacOS"
             lipo -create -output "$APP/Contents/MacOS/$BIN" \
               target/aarch64-apple-darwin/release/$BIN target/x86_64-apple-darwin/release/$BIN
-            sed -e "s/@BIN@/$BIN/g" -e "s/@NAME@/RDS-center ($app)/g" -e "s/@VERSION@/$VERSION/g" \
+            sed -e "s/@BIN@/$BIN/g" -e "s/@NAME@/myRDCcenter ($app)/g" -e "s/@VERSION@/$VERSION/g" \
               packaging/macos/Info.plist > "$APP/Contents/Info.plist"
             codesign --force --deep --sign - "$APP"
             ln -s /Applications "dist/$app/Applications"
-            hdiutil create -volname "RDS-center ($app)" -srcfolder "dist/$app" -ov -format UDZO "dist/RDS-center-$app-macos.dmg"
+            hdiutil create -volname "myRDCcenter ($app)" -srcfolder "dist/$app" -ov -format UDZO "dist/myRDCcenter-$app-macos.dmg"
           done
       - uses: actions/upload-artifact@v4
         with: { name: macos, path: dist/*.dmg }

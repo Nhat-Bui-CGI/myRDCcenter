@@ -1,4 +1,4 @@
-# RDS-center
+# myRDCcenter
 
 An offline Remote Desktop (RDP) connection manager in Rust. It runs on Windows, Linux and macOS.
 
@@ -8,16 +8,16 @@ There are two front-ends. They share the same core and the same vault file, so y
 
 | App | Folder | UI toolkit |
 |---|---|---|
-| `RDS-center-egui` | `app-egui` | egui / eframe (glow) |
-| `RDS-center-slint` | `app-slint` | Slint (Fluent style) |
+| `myRDCcenter-egui` | `app-egui` | egui / eframe (glow) |
+| `myRDCcenter-slint` | `app-slint` | Slint (Fluent style) |
 
 ## Download
 
 Go to [Releases](../../releases):
 
-- **Windows:** `RDS-center-egui-windows-x64.zip` or `RDS-center-slint-windows-x64.zip`. Each zip holds a single `.exe`. It only needs DLLs that ship with Windows, because the C runtime is linked statically.
-- **Linux:** `RDS-center-linux-x64.tar.gz`. It contains both apps.
-- **macOS:** `RDS-center-egui-macos.dmg` or `RDS-center-slint-macos.dmg`. These are universal builds for Apple Silicon and Intel. The app has no Apple developer signature. The first time you start it, right-click it and choose **Open**.
+- **Windows:** `myRDCcenter-egui-windows-x64.zip` or `myRDCcenter-slint-windows-x64.zip`. Each zip holds a single `.exe`. It only needs DLLs that ship with Windows, because the C runtime is linked statically.
+- **Linux:** `myRDCcenter-linux-x64.tar.gz`. It contains both apps.
+- **macOS:** `myRDCcenter-egui-macos.dmg` or `myRDCcenter-slint-macos.dmg`. These are universal builds for Apple Silicon and Intel. The app has no Apple developer signature. The first time you start it, right-click it and choose **Open**.
 
 ## Features
 
@@ -46,9 +46,9 @@ On Windows and macOS, the app writes a temporary `.rdp` file and deletes it agai
 ## Security
 
 - The vault file is stored here:
-  - Windows: `%LOCALAPPDATA%\RDS-center\vault.rdsc`
-  - Linux: `~/.local/share/RDS-center/vault.rdsc`
-  - macOS: `~/Library/Application Support/RDS-center/vault.rdsc`
+  - Windows: `%LOCALAPPDATA%\myRDCcenter\vault.rdsc`
+  - Linux: `~/.local/share/myRDCcenter/vault.rdsc`
+  - macOS: `~/Library/Application Support/myRDCcenter/vault.rdsc`
 - The key is derived from the master password with Argon2id (64 MiB, 3 passes). Data is encrypted with XChaCha20-Poly1305. The file header is authenticated too.
 - The vault is written to a temporary file first and then renamed, so a crash cannot leave a broken vault.
 - The master password cannot be recovered. Keep a backup and remember the password.
@@ -65,7 +65,7 @@ The apps are in `target/release/`.
 
 On Linux, you also need these packages: `libwayland-dev libxkbcommon-dev libfontconfig1-dev libgl1-mesa-dev libx11-dev libxcursor-dev libxrandr-dev libxi-dev`.
 
-Run the core tests with `cargo test -p rds-core`.
+Run the core tests with `cargo test -p myrdc-core`.
 
 To make a release, push a tag such as `v0.1.0`, or run the **Release** workflow from the Actions tab and enter the tag name. GitHub Actions then builds all the files listed under Download.
 

@@ -55,13 +55,22 @@ impl From<std::io::Error> for VaultError {
     }
 }
 
-/// Where the vault lives by default: %LOCALAPPDATA%\RDS-center\vault.rdsc
+/// Where the vault lives by default: %LOCALAPPDATA%\myRDCcenter\vault.rdsc
 /// (Local, not Roaming, so it never follows a domain profile to other PCs).
+/// A vault from before the rename (folder "RDS-center") is moved here on first use.
 pub fn default_vault_path() -> PathBuf {
-    dirs::data_local_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("RDS-center")
-        .join("vault.rdsc")
+    let base = dirs::data_local_dir().unwrap_or_else(|| PathBuf::from("."));
+    let path = base.join("myRDCcenter").join("vault.rdsc");
+    let old = base.join("RDS-center").join("vault.rdsc");
+    if !path.exists() && old.is_file() {
+        if let Some(dir) = path.parent() {
+            let _ = fs::create_dir_all(dir);
+        }
+        if fs::rename(&old, &path).is_err() {
+            let _ = fs::copy(&old, &path);
+        }
+    }
+    path
 }
 
 #[derive(Clone, Copy)]
@@ -105,7 +114,7 @@ impl Vault {
     pub fn open(path: &Path, password: &str) -> Result<Self, VaultError> {
         let bytes = fs::read(path)?;
         if bytes.len() < HEADER_LEN || &bytes[0..4] != MAGIC {
-            return Err(VaultError::Corrupt("not an RDS-center vault".into()));
+            return Err(VaultError::Corrupt("not a myRDCcenter vault".into()));
         }
         if bytes[4] != FORMAT_VERSION {
             return Err(VaultError::Corrupt(format!("unsupported version {}", bytes[4])));

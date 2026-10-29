@@ -1,4 +1,4 @@
-// RDS-center, egui front-end.
+// myRDCcenter, egui front-end.
 //
 // Anti-flicker notes (egui can "blink" on Windows if left at defaults):
 // - glow renderer with vsync, no MSAA, no transparency;
@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use eframe::egui::{self, Color32, RichText};
-use rds_core::{default_vault_path, groups, import, rdp, Connection, TreeRow, Vault};
+use myrdc_core::{default_vault_path, groups, import, rdp, Connection, TreeRow, Vault};
 use uuid::Uuid;
 
 const LABEL_WIDTH: f32 = 130.0;
@@ -23,7 +23,7 @@ const FIELD_WIDTH: f32 = 320.0;
 fn main() -> eframe::Result {
     let mut options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("RDS-center")
+            .with_title("myRDCcenter")
             .with_inner_size([1000.0, 640.0])
             .with_min_inner_size([720.0, 440.0])
             .with_transparent(false),
@@ -34,7 +34,7 @@ fn main() -> eframe::Result {
         ..Default::default()
     };
     options.glow_options.vsync = true;
-    eframe::run_native("RDS-center", options, Box::new(|cc| Ok(Box::new(App::new(cc)))))
+    eframe::run_native("myRDCcenter", options, Box::new(|cc| Ok(Box::new(App::new(cc)))))
 }
 
 enum Screen {
@@ -159,7 +159,7 @@ fn lock_ui(ui: &mut egui::Ui, lock: &mut LockScreen, path: &PathBuf) -> Option<V
     egui::CentralPanel::default().show(ui, |ui| {
         ui.add_space(ui.available_height() * 0.25);
         ui.vertical_centered(|ui| {
-            ui.heading(RichText::new("RDS-center").size(28.0));
+            ui.heading(RichText::new("myRDCcenter").size(28.0));
             ui.add_space(8.0);
             ui.label(if creating {
                 "Create a master password. It encrypts your vault and can't be recovered."
@@ -728,7 +728,7 @@ impl OpenVault {
     }
 
     fn backup(&mut self) {
-        let Some(dest) = rfd::FileDialog::new().add_filter("RDS-center vault", &["rdsc"]).set_file_name("rds-center-backup.rdsc").save_file()
+        let Some(dest) = rfd::FileDialog::new().add_filter("myRDCcenter vault", &["rdsc"]).set_file_name("myrdccenter-backup.rdsc").save_file()
         else {
             return;
         };
