@@ -44,6 +44,7 @@ component LockScreen inherits Rectangle {
     in property <bool> creating;
     in property <string> error;
     in property <string> vault-path;
+    in property <string> version;
     in property <bool> remember-supported;
     in property <string> remember-label;
     in property <bool> has-remembered;
@@ -66,6 +67,7 @@ component LockScreen inherits Rectangle {
                 width: 320px;
                 spacing: 10px;
                 Text { text: "myRDCcenter"; font-size: 28px; horizontal-alignment: center; }
+                Text { text: "Version " + root.version; horizontal-alignment: center; color: Palette.foreground.with-alpha(0.6); }
                 Text {
                     text: root.creating ? "Create a master password. It encrypts your vault and can't be recovered." : "Enter your master password to unlock.";
                     wrap: word-wrap;
@@ -104,7 +106,8 @@ component LockScreen inherits Rectangle {
 }
 
 export component MainWindow inherits Window {
-    title: "myRDCcenter";
+    in property <string> version;
+    title: "myRDCcenter " + root.version;
     icon: @image-url("../../assets/icon-256.png");
     preferred-width: 1000px;
     preferred-height: 720px;
@@ -181,6 +184,7 @@ export component MainWindow inherits Window {
         creating: root.creating;
         error: root.lock-error;
         vault-path: root.vault-path;
+        version: root.version;
         remember-supported: root.remember-supported;
         remember-label: root.remember-label;
         has-remembered: root.has-remembered;

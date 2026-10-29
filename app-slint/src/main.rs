@@ -31,6 +31,7 @@ type Shared = Rc<RefCell<State>>;
 
 fn main() -> Result<(), slint::PlatformError> {
     let ui = MainWindow::new()?;
+    ui.set_version(env!("CARGO_PKG_VERSION").into());
     let path = default_vault_path();
     ui.set_vault_path(path.display().to_string().into());
     ui.set_creating(!Vault::exists(&path));

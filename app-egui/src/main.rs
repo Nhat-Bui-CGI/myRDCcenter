@@ -23,7 +23,7 @@ const FIELD_WIDTH: f32 = 320.0;
 fn main() -> eframe::Result {
     let mut options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("myRDCcenter")
+            .with_title(concat!("myRDCcenter ", env!("CARGO_PKG_VERSION")))
             .with_inner_size([1000.0, 640.0])
             .with_min_inner_size([720.0, 440.0])
             .with_transparent(false)
@@ -208,6 +208,7 @@ fn lock_ui(ui: &mut egui::Ui, lock: &mut LockScreen, path: &PathBuf) -> Option<V
         ui.add_space(ui.available_height() * 0.25);
         ui.vertical_centered(|ui| {
             ui.heading(RichText::new("myRDCcenter").size(28.0));
+            ui.label(RichText::new(concat!("Version ", env!("CARGO_PKG_VERSION"))).weak());
             ui.add_space(8.0);
             ui.label(if creating {
                 "Create a master password. It encrypts your vault and can't be recovered."
