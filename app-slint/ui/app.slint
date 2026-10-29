@@ -1,0 +1,280 @@
+import { Button, LineEdit, CheckBox, SpinBox, ScrollView, TextEdit, Palette, HorizontalBox, VerticalBox } from "std-widgets.slint";
+
+export struct ConnData {
+    id: string,
+    name: string,
+    group: string,
+    host: string,
+    port: int,
+    username: string,
+    domain: string,
+    password: string,
+    gateway: string,
+    fullscreen: bool,
+    width: int,
+    height: int,
+    multimon: bool,
+    redirect-clipboard: bool,
+    redirect-drives: bool,
+    admin-session: bool,
+    notes: string,
+}
+
+export struct ListRow {
+    id: string,         // empty for a folder heading
+    title: string,
+    tooltip: string,
+}
+
+component Field inherits HorizontalLayout {
+    in property <string> label;
+    spacing: 12px;
+    Text {
+        text: root.label;
+        width: 120px;
+        vertical-alignment: center;
+    }
+    @children
+}
+
+component LockScreen inherits Rectangle {
+    in property <bool> creating;
+    in property <string> error;
+    in property <string> vault-path;
+    callback submit(string, string);
+
+    VerticalLayout {
+        alignment: center;
+        HorizontalLayout {
+            alignment: center;
+            VerticalLayout {
+                width: 320px;
+                spacing: 10px;
+                Text { text: "RDS-center"; font-size: 28px; horizontal-alignment: center; }
+                Text {
+                    text: root.creating ? "Create a master password. It encrypts your vault and can't be recovered." : "Enter your master password to unlock.";
+                    wrap: word-wrap;
+                    horizontal-alignment: center;
+                }
+                pw := LineEdit {
+                    input-type: password;
+                    placeholder-text: "Master password";
+                    accepted => { root.submit(pw.text, pw2.text); pw.text = ""; pw2.text = ""; }
+                }
+                pw2 := LineEdit {
+                    visible: root.creating;
+                    input-type: password;
+                    placeholder-text: "Repeat password";
+                    accepted => { root.submit(pw.text, pw2.text); pw.text = ""; pw2.text = ""; }
+                }
+                Button {
+                    text: root.creating ? "Create vault" : "Unlock";
+                    primary: true;
+                    clicked => { root.submit(pw.text, pw2.text); pw.text = ""; pw2.text = ""; }
+                }
+                Text { text: root.error; color: #ff7070; horizontal-alignment: center; height: 20px; }
+                Text { text: root.vault-path; font-size: 11px; color: Palette.foreground.with-alpha(0.5); horizontal-alignment: center; wrap: word-wrap; }
+            }
+        }
+    }
+    init => { pw.focus(); }
+}
+
+export component MainWindow inherits Window {
+    title: "RDS-center";
+    preferred-width: 1000px;
+    preferred-height: 640px;
+    min-width: 720px;
+    min-height: 440px;
+
+    in property <bool> locked: true;
+    in property <bool> creating;
+    in property <string> lock-error;
+    in property <string> vault-path;
+    in property <[ListRow]> rows;
+    in property <string> selected-id;
+    in property <bool> has-draft;
+    in-out property <ConnData> draft;
+    in property <string> status;
+    in-out property <string> search;
+    in-out property <int> auto-lock-minutes;
+    in-out property <bool> show-password;
+    in-out property <bool> confirm-delete;
+    in-out property <bool> change-pw-open;
+
+    callback unlock(string, string);
+    callback search-changed(string);
+    callback select(string);
+    callback activate(string);
+    callback new-connection();
+    callback import-rdp();
+    callback backup();
+    callback save();
+    callback connect();
+    callback delete();
+    callback lock();
+    callback auto-lock-changed(int);
+    callback change-password(string, string);
+
+    if root.locked: LockScreen {
+        creating: root.creating;
+        error: root.lock-error;
+        vault-path: root.vault-path;
+        submit(a, b) => { root.unlock(a, b); }
+    }
+
+    if !root.locked: VerticalLayout {
+        // Toolbar
+        HorizontalBox {
+            Button { text: "New"; clicked => { root.new-connection(); } }
+            Button { text: "Import .rdp"; clicked => { root.import-rdp(); } }
+            Button { text: "Backup"; clicked => { root.backup(); } }
+            Button { text: "Change password"; clicked => { root.change-pw-open = true; } }
+            Text { text: "Auto-lock (min):"; vertical-alignment: center; }
+            SpinBox {
+                width: 90px;
+                minimum: 0;
+                maximum: 240;
+                value <=> root.auto-lock-minutes;
+                edited(v) => { root.auto-lock-changed(v); }
+            }
+            Rectangle { horizontal-stretch: 1; }
+            Button { text: "Lock"; clicked => { root.lock(); } }
+        }
+
+        HorizontalLayout {
+            vertical-stretch: 1;
+            // Connection list
+            VerticalBox {
+                width: 290px;
+                LineEdit {
+                    placeholder-text: "Search";
+                    text <=> root.search;
+                    edited(t) => { root.search-changed(t); }
+                }
+                ScrollView {
+                    vertical-stretch: 1;
+                    VerticalLayout {
+                        alignment: start;
+                        for row in root.rows: Rectangle {
+                            height: row.id == "" ? 30px : 26px;
+                            border-radius: 4px;
+                            background: row.id != "" && row.id == root.selected-id ? Palette.selection-background
+                                : (ta.has-hover && row.id != "" ? Palette.alternate-background : transparent);
+                            Text {
+                                x: row.id == "" ? 4px : 20px;
+                                text: row.title;
+                                font-weight: row.id == "" ? 700 : 400;
+                                vertical-alignment: center;
+                                color: row.id != "" && row.id == root.selected-id ? Palette.selection-foreground : Palette.foreground;
+                                overflow: elide;
+                                width: parent.width - self.x - 4px;
+                            }
+                            ta := TouchArea {
+                                enabled: row.id != "";
+                                clicked => { root.select(row.id); }
+                                double-clicked => { root.activate(row.id); }
+                            }
+                        }
+                        if root.rows.length == 0: Text {
+                            text: "No connections yet. Click New.";
+                            color: Palette.foreground.with-alpha(0.5);
+                        }
+                    }
+                }
+            }
+            Rectangle { width: 1px; background: Palette.border; }
+
+            // Details
+            if !root.has-draft: Text {
+                horizontal-stretch: 1;
+                text: "Select a connection, or double-click to connect";
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                color: Palette.foreground.with-alpha(0.5);
+            }
+            if root.has-draft: ScrollView {
+                horizontal-stretch: 1;
+                VerticalBox {
+                    alignment: start;
+                    spacing: 8px;
+                    Text { text: root.draft.name == "" ? root.draft.host : root.draft.name; font-size: 20px; }
+                    Field { label: "Name"; LineEdit { text <=> root.draft.name; } }
+                    Field { label: "Folder"; LineEdit { text <=> root.draft.group; placeholder-text: "e.g. Work/Servers"; } }
+                    Field { label: "Host"; LineEdit { text <=> root.draft.host; } }
+                    Field { label: "Port"; SpinBox { minimum: 1; maximum: 65535; value <=> root.draft.port; } }
+                    Field { label: "Username"; LineEdit { text <=> root.draft.username; } }
+                    Field { label: "Domain"; LineEdit { text <=> root.draft.domain; } }
+                    Field {
+                        label: "Password";
+                        LineEdit { text <=> root.draft.password; input-type: root.show-password ? text : password; }
+                        Button { text: root.show-password ? "Hide" : "Show"; clicked => { root.show-password = !root.show-password; } }
+                    }
+                    Field { label: "RD Gateway"; LineEdit { text <=> root.draft.gateway; } }
+                    Field {
+                        label: "Screen";
+                        CheckBox { text: "Full screen"; checked <=> root.draft.fullscreen; }
+                        SpinBox { enabled: !root.draft.fullscreen; minimum: 640; maximum: 7680; value <=> root.draft.width; }
+                        SpinBox { enabled: !root.draft.fullscreen; minimum: 480; maximum: 4320; value <=> root.draft.height; }
+                    }
+                    Field {
+                        label: "Options";
+                        VerticalLayout {
+                            CheckBox { text: "Use all monitors"; checked <=> root.draft.multimon; }
+                            CheckBox { text: "Share clipboard"; checked <=> root.draft.redirect-clipboard; }
+                            CheckBox { text: "Share local drives"; checked <=> root.draft.redirect-drives; }
+                            CheckBox { text: "Admin / console session"; checked <=> root.draft.admin-session; }
+                        }
+                    }
+                    Field { label: "Notes"; TextEdit { text <=> root.draft.notes; height: 70px; } }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+                        Button { text: "Connect"; primary: true; clicked => { root.connect(); } }
+                        Button { text: "Save"; clicked => { root.save(); } }
+                        if !root.confirm-delete: Button { text: "Delete"; clicked => { root.confirm-delete = true; } }
+                        if root.confirm-delete: Button { text: "Really delete?"; clicked => { root.delete(); } }
+                        if root.confirm-delete: Button { text: "Cancel"; clicked => { root.confirm-delete = false; } }
+                    }
+                }
+            }
+        }
+
+        // Status bar
+        Rectangle {
+            height: 24px;
+            Text {
+                x: 8px;
+                text: root.status;
+                color: Palette.foreground.with-alpha(0.6);
+                vertical-alignment: center;
+                overflow: elide;
+                width: parent.width - 16px;
+            }
+        }
+    }
+
+    // Change-password dialog
+    if root.change-pw-open && !root.locked: Rectangle {
+        background: #00000080;
+        TouchArea {}
+        Rectangle {
+            width: 340px;
+            height: 200px;
+            background: Palette.background;
+            border-radius: 8px;
+            border-width: 1px;
+            border-color: Palette.border;
+            VerticalBox {
+                Text { text: "Change master password"; font-size: 16px; }
+                np := LineEdit { input-type: password; placeholder-text: "New password"; }
+                np2 := LineEdit { input-type: password; placeholder-text: "Repeat"; }
+                HorizontalLayout {
+                    spacing: 8px;
+                    Button { text: "Change"; primary: true; clicked => { root.change-password(np.text, np2.text); np.text = ""; np2.text = ""; } }
+                    Button { text: "Cancel"; clicked => { root.change-pw-open = false; np.text = ""; np2.text = ""; } }
+                }
+            }
+        }
+    }
+}
