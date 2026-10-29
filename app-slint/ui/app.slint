@@ -44,11 +44,16 @@ component LockScreen inherits Rectangle {
     in property <bool> creating;
     in property <string> error;
     in property <string> vault-path;
-    callback submit(string, string);
+    in property <bool> remember-supported;
+    in property <string> remember-label;
+    in property <bool> has-remembered;
+    callback submit(string, string, bool);
+    callback unlock-remembered();
     property <string> confirm;
+    property <bool> remember;
 
     function do-submit() {
-        root.submit(pw.text, root.confirm);
+        root.submit(pw.text, root.confirm, root.remember);
         pw.text = "";
         root.confirm = "";
     }
@@ -77,10 +82,18 @@ component LockScreen inherits Rectangle {
                     text <=> root.confirm;
                     accepted => { root.do-submit(); }
                 }
+                if root.remember-supported: CheckBox {
+                    text: root.remember-label;
+                    checked <=> root.remember;
+                }
                 Button {
                     text: root.creating ? "Create vault" : "Unlock";
                     primary: true;
                     clicked => { root.do-submit(); }
+                }
+                if root.has-remembered && !root.creating: Button {
+                    text: "Unlock with my computer login";
+                    clicked => { root.unlock-remembered(); }
                 }
                 Text { text: root.error; color: #ff7070; horizontal-alignment: center; height: 20px; }
                 Text { text: root.vault-path; font-size: 11px; color: Palette.foreground.with-alpha(0.5); horizontal-alignment: center; wrap: word-wrap; }
@@ -122,7 +135,13 @@ export component MainWindow inherits Window {
     in-out property <string> group-dialog-name;
     in property <string> group-dialog-error;
 
-    callback unlock(string, string);
+    callback unlock(string, string, bool);
+    callback unlock-remembered();
+    callback set-remember(bool);
+    in property <bool> remember-supported;
+    in property <string> remember-label;
+    in property <bool> has-remembered;
+    in-out property <bool> remembered;
     callback search-changed(string);
     callback select(string);
     callback activate(string);
@@ -147,7 +166,11 @@ export component MainWindow inherits Window {
         creating: root.creating;
         error: root.lock-error;
         vault-path: root.vault-path;
-        submit(a, b) => { root.unlock(a, b); }
+        remember-supported: root.remember-supported;
+        remember-label: root.remember-label;
+        has-remembered: root.has-remembered;
+        submit(a, b, r) => { root.unlock(a, b, r); }
+        unlock-remembered => { root.unlock-remembered(); }
     }
 
     if !root.locked: VerticalLayout {
@@ -158,6 +181,11 @@ export component MainWindow inherits Window {
             Button { text: "Import"; clicked => { root.import-rdp(); } }
             Button { text: "Backup"; clicked => { root.backup(); } }
             Button { text: "Change password"; clicked => { root.change-pw-open = true; } }
+            if root.remember-supported: CheckBox {
+                text: "Remember on this computer";
+                checked <=> root.remembered;
+                toggled => { root.set-remember(self.checked); }
+            }
             Text { text: "Auto-lock (min):"; vertical-alignment: center; }
             SpinBox {
                 width: 90px;

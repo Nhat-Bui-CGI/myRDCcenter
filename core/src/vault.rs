@@ -112,6 +112,36 @@ impl Vault {
 
     /// Open and decrypt an existing vault file.
     pub fn open(path: &Path, password: &str) -> Result<Self, VaultError> {
+        Self::open_inner(path, |salt, kdf| derive_key(password, salt, kdf))
+    }
+
+    /// Open with a key remembered on this computer (see [`crate::keystore`]).
+    /// Returns None when nothing is remembered for this vault.
+    pub fn open_remembered(path: &Path) -> Option<Result<Self, VaultError>> {
+        let key = crate::keystore::load(path)?;
+        Some(Self::open_inner(path, |_, _| Ok(key.clone())))
+    }
+
+    /// True when this vault's key is remembered on this computer.
+    pub fn is_remembered(&self) -> bool {
+        crate::keystore::load(&self.path).is_some()
+    }
+
+    /// Remember the key on this computer, protected by the user's login, so the
+    /// vault opens without the master password. Pass false to forget it again.
+    pub fn set_remembered(&self, remember: bool) -> Result<(), String> {
+        if remember {
+            crate::keystore::save(&self.path, &self.key)
+        } else {
+            crate::keystore::forget(&self.path);
+            Ok(())
+        }
+    }
+
+    fn open_inner(
+        path: &Path,
+        get_key: impl FnOnce(&[u8], KdfParams) -> Result<Zeroizing<[u8; 32]>, VaultError>,
+    ) -> Result<Self, VaultError> {
         let bytes = fs::read(path)?;
         if bytes.len() < HEADER_LEN || &bytes[0..4] != MAGIC {
             return Err(VaultError::Corrupt("not a myRDCcenter vault".into()));
@@ -125,7 +155,7 @@ impl Vault {
         salt.copy_from_slice(&bytes[17..17 + SALT_LEN]);
         let nonce = XNonce::from_slice(&bytes[17 + SALT_LEN..HEADER_LEN]);
 
-        let key = derive_key(password, &salt, kdf)?;
+        let key = get_key(&salt, kdf)?;
         let cipher = XChaCha20Poly1305::new(key.as_ref().into());
         let plain = Zeroizing::new(
             cipher
@@ -162,12 +192,18 @@ impl Vault {
 
     /// Re-key the vault with a new master password and save it.
     pub fn change_password(&mut self, new_password: &str) -> Result<(), VaultError> {
+        let remembered = self.is_remembered();
         let salt = random_bytes::<SALT_LEN>()?;
         let kdf = KdfParams::default();
         self.key = derive_key(new_password, &salt, kdf)?;
         self.salt = salt;
         self.kdf = kdf;
-        self.save()
+        self.save()?;
+        if remembered {
+            // Keep "remember on this computer" working with the new key.
+            let _ = self.set_remembered(true);
+        }
+        Ok(())
     }
 
     fn encrypt(&self) -> Result<Vec<u8>, VaultError> {

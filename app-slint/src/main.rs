@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use myrdc_core::{default_vault_path, groups, idle, import, rdp, Connection, Secret, TreeRow, Vault};
+use myrdc_core::{default_vault_path, groups, idle, import, keystore, rdp, Connection, Secret, TreeRow, Vault};
 use slint::{ComponentHandle, ModelRc, SharedString, Timer, TimerMode, VecModel};
 use uuid::Uuid;
 
@@ -32,6 +32,9 @@ fn main() -> Result<(), slint::PlatformError> {
     let path = default_vault_path();
     ui.set_vault_path(path.display().to_string().into());
     ui.set_creating(!Vault::exists(&path));
+    ui.set_remember_supported(keystore::SUPPORTED);
+    ui.set_remember_label(keystore::label().into());
+    ui.set_has_remembered(keystore::load(&path).is_some());
     let state: Shared = Rc::new(RefCell::new(State { path, vault: None, selected: None, selected_group: None, dialog_renaming: None, dialog_parent: String::new(), last_activity: Instant::now() }));
 
     // Every callback counts as activity for auto-lock (used when system idle time isn't available).
@@ -42,9 +45,9 @@ fn main() -> Result<(), slint::PlatformError> {
 
     ui.on_unlock({
         let (ui_w, s) = (ui.as_weak(), state.clone());
-        move |pw, confirm| {
+        move |pw, confirm, remember| {
             let ui = ui_w.unwrap();
-            let mut st = s.borrow_mut();
+            let st = s.borrow_mut();
             let creating = !Vault::exists(&st.path);
             let res = if creating {
                 if pw.len() < 8 {
@@ -57,24 +60,62 @@ fn main() -> Result<(), slint::PlatformError> {
             } else {
                 Vault::open(&st.path, &pw).map_err(|e| e.to_string())
             };
+            let res = res.and_then(|v| {
+                if remember {
+                    v.set_remembered(true)?;
+                }
+                Ok(v)
+            });
             match res {
                 Ok(v) => {
-                    ui.set_auto_lock_minutes(v.data.settings.auto_lock_minutes as i32);
-                    st.vault = Some(v);
-                    st.selected = None;
-                    st.last_activity = Instant::now();
                     drop(st);
-                    ui.set_lock_error("".into());
-                    ui.set_search("".into());
-                    ui.set_has_draft(false);
-                    ui.set_status("".into());
-                    ui.set_locked(false);
-                    refresh_list(&ui, &s);
+                    enter_vault(&ui, &s, v);
                 }
                 Err(e) => ui.set_lock_error(e.into()),
             }
         }
     });
+
+    ui.on_unlock_remembered({
+        let (ui_w, s) = (ui.as_weak(), state.clone());
+        move || {
+            let ui = ui_w.unwrap();
+            let path = s.borrow().path.clone();
+            match Vault::open_remembered(&path) {
+                Some(Ok(v)) => enter_vault(&ui, &s, v),
+                Some(Err(e)) => ui.set_lock_error(e.to_string().into()),
+                None => {
+                    ui.set_has_remembered(false);
+                    ui.set_lock_error("No remembered key found. Use the master password.".into());
+                }
+            }
+        }
+    });
+
+    ui.on_set_remember({
+        let (ui_w, s, t) = (ui.as_weak(), state.clone(), touch.clone());
+        move |on| {
+            t();
+            let ui = ui_w.unwrap();
+            let st = s.borrow();
+            let Some(v) = st.vault.as_ref() else { return };
+            let msg = match v.set_remembered(on) {
+                Ok(()) if on => "The vault now opens with your computer login".to_string(),
+                Ok(()) => "The vault now asks for the master password".to_string(),
+                Err(e) => {
+                    ui.set_remembered(false);
+                    e
+                }
+            };
+            ui.set_status(msg.into());
+        }
+    });
+
+    // Open straight away when the key is remembered on this computer.
+    let startup_path = state.borrow().path.clone();
+    if let Some(Ok(v)) = Vault::open_remembered(&startup_path) {
+        enter_vault(&ui, &state, v);
+    }
 
     ui.on_search_changed({
         let (ui_w, s, t) = (ui.as_weak(), state.clone(), touch.clone());
@@ -408,12 +449,32 @@ fn main() -> Result<(), slint::PlatformError> {
     ui.run()
 }
 
+fn enter_vault(ui: &MainWindow, s: &Shared, v: Vault) {
+    ui.set_remembered(v.is_remembered());
+    ui.set_auto_lock_minutes(v.data.settings.auto_lock_minutes as i32);
+    {
+        let mut st = s.borrow_mut();
+        st.vault = Some(v);
+        st.selected = None;
+        st.selected_group = None;
+        st.last_activity = Instant::now();
+    }
+    ui.set_lock_error("".into());
+    ui.set_search("".into());
+    ui.set_has_draft(false);
+    ui.set_selected_group("".into());
+    ui.set_status("".into());
+    ui.set_locked(false);
+    refresh_list(ui, s);
+}
+
 fn lock(ui: &MainWindow, s: &Shared) {
     let mut st = s.borrow_mut();
     st.vault = None; // drops and wipes the key
     st.selected = None;
     st.selected_group = None;
     ui.set_creating(!Vault::exists(&st.path));
+    ui.set_has_remembered(keystore::load(&st.path).is_some());
     drop(st);
     // Clear everything sensitive from the UI.
     ui.set_draft(ConnData::default());

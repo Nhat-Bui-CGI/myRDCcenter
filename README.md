@@ -32,6 +32,7 @@ Go to [Releases](../../releases):
   - Passwords in `.rdm` files are encrypted by the program that made them, so they are not imported. Type them in again.
   - Importing the same file twice does not create duplicates.
 - Encrypted backup, change master password, auto-lock after idle time
+- **Remember on this computer** (Windows and macOS): tick it once, and the app opens without the master password. The key is protected by your computer login, using Windows DPAPI or the macOS Keychain. Anyone who can sign in to your computer as you can then open the vault. Untick it to ask for the password again. After auto-lock, click **Unlock with my computer login**.
 
 ## How Connect works
 

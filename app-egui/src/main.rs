@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use eframe::egui::{self, Color32, RichText};
-use myrdc_core::{default_vault_path, groups, import, rdp, Connection, TreeRow, Vault};
+use myrdc_core::{default_vault_path, groups, import, keystore, rdp, Connection, TreeRow, Vault};
 use uuid::Uuid;
 
 const LABEL_WIDTH: f32 = 130.0;
@@ -42,11 +42,26 @@ enum Screen {
     Open(Box<OpenVault>),
 }
 
-#[derive(Default)]
 struct LockScreen {
     password: String,
     confirm: String,
     error: String,
+    /// "Remember on this computer" checkbox.
+    remember: bool,
+    /// A remembered key exists, so "Unlock with my login" is offered.
+    has_remembered: bool,
+}
+
+impl LockScreen {
+    fn new(path: &PathBuf) -> Self {
+        Self {
+            password: String::new(),
+            confirm: String::new(),
+            error: String::new(),
+            remember: false,
+            has_remembered: keystore::load(path).is_some(),
+        }
+    }
 }
 
 struct OpenVault {
@@ -59,6 +74,7 @@ struct OpenVault {
     status: String,
     confirm_delete: bool,
     change_pw: Option<(String, String)>,
+    remembered: bool,
     /// Group selected in the tree (when no connection is selected).
     selected_group: Option<String>,
     group_dialog: Option<GroupDialog>,
@@ -101,11 +117,17 @@ impl App {
             // No fade animations: they are a common source of visible flicker.
             style.animation_time = 0.0;
         });
-        Self { vault_path: default_vault_path(), screen: Screen::Locked(LockScreen::default()), last_activity: Instant::now() }
+        let vault_path = default_vault_path();
+        // Open straight away when the key is remembered on this computer.
+        let screen = match Vault::open_remembered(&vault_path) {
+            Some(Ok(v)) => Screen::Open(Box::new(OpenVault::new(v))),
+            _ => Screen::Locked(LockScreen::new(&vault_path)),
+        };
+        Self { vault_path, screen, last_activity: Instant::now() }
     }
 
     fn lock(&mut self) {
-        self.screen = Screen::Locked(LockScreen::default());
+        self.screen = Screen::Locked(LockScreen::new(&self.vault_path));
     }
 
     fn auto_lock_check(&mut self, ctx: &egui::Context) {
@@ -179,8 +201,21 @@ fn lock_ui(ui: &mut egui::Ui, lock: &mut LockScreen, path: &PathBuf) -> Option<V
                 );
                 submit |= c.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
             }
+            if keystore::SUPPORTED {
+                ui.checkbox(&mut lock.remember, keystore::label());
+            }
             ui.add_space(8.0);
             submit |= ui.button(if creating { "Create vault" } else { "Unlock" }).clicked();
+            if lock.has_remembered && !creating && ui.button("Unlock with my computer login").clicked() {
+                match Vault::open_remembered(path) {
+                    Some(Ok(v)) => result = Some(v),
+                    Some(Err(e)) => lock.error = e.to_string(),
+                    None => {
+                        lock.has_remembered = false;
+                        lock.error = "No remembered key found. Use the master password.".into();
+                    }
+                }
+            }
             // Fixed-height error line, so the layout doesn't jump when an error shows up.
             ui.add_sized([400.0, 20.0], egui::Label::new(RichText::new(&lock.error).color(Color32::LIGHT_RED)));
             ui.label(RichText::new(path.display().to_string()).small().weak());
@@ -198,7 +233,14 @@ fn lock_ui(ui: &mut egui::Ui, lock: &mut LockScreen, path: &PathBuf) -> Option<V
                     Vault::open(path, &lock.password).map_err(|e| e.to_string())
                 };
                 match res {
-                    Ok(v) => result = Some(v),
+                    Ok(v) => {
+                        if lock.remember {
+                            if let Err(e) = v.set_remembered(true) {
+                                lock.error = e;
+                            }
+                        }
+                        result = Some(v);
+                    }
                     Err(e) => lock.error = e,
                 }
                 wipe(&mut lock.password);
@@ -221,6 +263,7 @@ fn wipe(s: &mut String) {
 
 impl OpenVault {
     fn new(vault: Vault) -> Self {
+        let remembered = vault.is_remembered();
         Self {
             vault,
             search: String::new(),
@@ -230,6 +273,7 @@ impl OpenVault {
             status: String::new(),
             confirm_delete: false,
             change_pw: None,
+            remembered,
             selected_group: None,
             group_dialog: None,
             confirm_delete_group: false,
@@ -288,6 +332,20 @@ impl OpenVault {
                     self.change_pw = Some(Default::default());
                 }
                 ui.separator();
+                if keystore::SUPPORTED {
+                    let r = ui.checkbox(&mut self.remembered, "Remember on this computer").on_hover_text(keystore::label());
+                    if r.changed() {
+                        self.status = match self.vault.set_remembered(self.remembered) {
+                            Ok(()) if self.remembered => "The vault now opens with your computer login".into(),
+                            Ok(()) => "The vault now asks for the master password".into(),
+                            Err(e) => {
+                                self.remembered = false;
+                                e
+                            }
+                        };
+                    }
+                    ui.separator();
+                }
                 ui.label("Auto-lock (min):");
                 let mut mins = self.vault.data.settings.auto_lock_minutes;
                 if ui.add(egui::DragValue::new(&mut mins).range(0..=240)).changed() {

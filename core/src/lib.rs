@@ -5,6 +5,7 @@ pub mod groups;
 pub mod idle;
 pub mod import;
 pub mod import_rdm;
+pub mod keystore;
 pub mod model;
 pub mod rdp;
 pub mod vault;
