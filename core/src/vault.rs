@@ -143,6 +143,14 @@ impl Vault {
         get_key: impl FnOnce(&[u8], KdfParams) -> Result<Zeroizing<[u8; 32]>, VaultError>,
     ) -> Result<Self, VaultError> {
         let bytes = fs::read(path)?;
+        Self::decrypt_bytes(path, &bytes, get_key)
+    }
+
+    fn decrypt_bytes(
+        path: &Path,
+        bytes: &[u8],
+        get_key: impl FnOnce(&[u8], KdfParams) -> Result<Zeroizing<[u8; 32]>, VaultError>,
+    ) -> Result<Self, VaultError> {
         if bytes.len() < HEADER_LEN || &bytes[0..4] != MAGIC {
             return Err(VaultError::Corrupt("not a myRDCcenter vault".into()));
         }
@@ -165,6 +173,22 @@ impl Vault {
         let data: VaultData =
             serde_json::from_slice(&plain).map_err(|e| VaultError::Corrupt(e.to_string()))?;
         Ok(Vault { path: path.to_path_buf(), key, salt, kdf, data })
+    }
+
+    /// Encrypt `data` on its own with `password`, in the vault file format.
+    /// Used for export files that are moved to another computer.
+    pub fn seal(data: &VaultData, password: &str) -> Result<Vec<u8>, VaultError> {
+        let kdf = KdfParams::default();
+        let salt = random_bytes::<SALT_LEN>()?;
+        let key = derive_key(password, &salt, kdf)?;
+        let tmp = Vault { path: PathBuf::new(), key, salt, kdf, data: data.clone() };
+        tmp.encrypt()
+    }
+
+    /// Decrypt bytes made by [`Vault::seal`] (or a vault/backup file).
+    pub fn unseal(bytes: &[u8], password: &str) -> Result<VaultData, VaultError> {
+        let mut v = Self::decrypt_bytes(Path::new(""), bytes, |salt, kdf| derive_key(password, salt, kdf))?;
+        Ok(std::mem::take(&mut v.data))
     }
 
     pub fn path(&self) -> &Path {

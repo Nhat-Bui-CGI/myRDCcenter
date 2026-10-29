@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use eframe::egui::{self, Color32, RichText};
-use myrdc_core::{default_vault_path, groups, import, keystore, rdp, Connection, TreeRow, Vault};
+use myrdc_core::{default_vault_path, export, groups, import, keystore, rdp, Connection, TreeRow, Vault};
 use uuid::Uuid;
 
 const LABEL_WIDTH: f32 = 130.0;
@@ -83,6 +83,9 @@ struct OpenVault {
     /// Group selected in the tree (when no connection is selected).
     selected_group: Option<String>,
     group_dialog: Option<GroupDialog>,
+    export_dialog: Option<ExportDialog>,
+    /// .rdcx files waiting for their export password.
+    import_pw_dialog: Option<ImportPwDialog>,
     confirm_delete_group: bool,
 }
 
@@ -92,6 +95,23 @@ struct GroupDialog {
     renaming: Option<String>,
     parent: String,
     name: String,
+    error: String,
+}
+
+/// "Export" dialog: what to export and the password that locks the file.
+struct ExportDialog {
+    /// None = everything; Some(path) = this group and its subgroups.
+    group: Option<String>,
+    password: String,
+    confirm: String,
+    /// Remove the exported connections here afterwards ("move" instead of "copy").
+    move_after: bool,
+    error: String,
+}
+
+struct ImportPwDialog {
+    files: Vec<PathBuf>,
+    password: String,
     error: String,
 }
 
@@ -107,6 +127,7 @@ enum TreeAction {
     NewGroupIn(String),
     RenameGroup(String),
     DeleteGroup(String),
+    ExportGroup(String),
 }
 
 struct App {
@@ -281,6 +302,8 @@ impl OpenVault {
             remembered,
             selected_group: None,
             group_dialog: None,
+            export_dialog: None,
+            import_pw_dialog: None,
             confirm_delete_group: false,
         }
     }
@@ -329,6 +352,9 @@ impl OpenVault {
                 }
                 if ui.button("Import").on_hover_text("Import .rdp or .rdm files").clicked() {
                     self.import();
+                }
+                if ui.button("Export").on_hover_text("Copy or move connections to another computer").clicked() {
+                    self.open_export(None);
                 }
                 if ui.button("Backup").clicked() {
                     self.backup();
@@ -380,6 +406,8 @@ impl OpenVault {
 
         self.change_password_ui(ui);
         self.group_dialog_ui(ui);
+        self.export_dialog_ui(ui);
+        self.import_pw_dialog_ui(ui);
         lock
     }
 
@@ -441,6 +469,9 @@ impl OpenVault {
                                     }
                                     if ui.button("Rename / move").clicked() {
                                         action = Some(TreeAction::RenameGroup(path.clone()));
+                                    }
+                                    if ui.button("Export group...").clicked() {
+                                        action = Some(TreeAction::ExportGroup(path.clone()));
                                     }
                                     if ui.button("Delete group").clicked() {
                                         action = Some(TreeAction::DeleteGroup(path.clone()));
@@ -541,6 +572,7 @@ impl OpenVault {
                     error: String::new(),
                 });
             }
+            TreeAction::ExportGroup(path) => self.open_export(Some(path)),
             TreeAction::DeleteGroup(path) => {
                 self.select_group(&path);
                 self.confirm_delete_group = true;
@@ -572,6 +604,9 @@ impl OpenVault {
             }
             if ui.button("Rename / move").clicked() {
                 action = Some(TreeAction::RenameGroup(path.clone()));
+            }
+            if ui.button("Export group").clicked() {
+                action = Some(TreeAction::ExportGroup(path.clone()));
             }
             if self.confirm_delete_group {
                 if ui.button(RichText::new("Really delete group?").color(Color32::LIGHT_RED)).clicked() {
@@ -776,17 +811,142 @@ impl OpenVault {
     }
 
     fn import(&mut self) {
-        let Some(files) = rfd::FileDialog::new().add_filter("Remote Desktop (.rdp, .rdm)", import::IMPORT_EXTENSIONS).pick_files()
+        let Some(files) = rfd::FileDialog::new()
+            .add_filter("Remote Desktop (.rdp, .rdm, .rdcx)", import::IMPORT_EXTENSIONS)
+            .pick_files()
         else {
             return;
         };
-        let report = import::import_files(&mut self.vault.data, &files);
-        self.save_vault(&report.message());
-        if report.errors.is_empty() || report.added > 0 {
-            self.status = report.message();
+        if import::needs_password(&files) {
+            self.import_pw_dialog = Some(ImportPwDialog { files, password: String::new(), error: String::new() });
+        } else {
+            self.run_import(&files, None);
         }
+    }
+
+    /// Returns false when an export password was wrong, so the dialog can stay open.
+    fn run_import(&mut self, files: &[PathBuf], password: Option<&str>) -> bool {
+        let report = import::import_files(&mut self.vault.data, files, password);
+        if report.added == 0 && report.errors.iter().any(|e| e.contains("Wrong export password")) {
+            return false;
+        }
+        self.save_vault(&report.message());
+        self.status = report.message();
         if let Some(id) = report.last_id {
             self.select(id);
+        }
+        true
+    }
+
+    fn import_pw_dialog_ui(&mut self, ui: &mut egui::Ui) {
+        let Some(dlg) = self.import_pw_dialog.as_mut() else { return };
+        let mut ok = false;
+        let mut close = false;
+        egui::Modal::new(egui::Id::unique("import_pw")).show(ui.ctx(), |ui| {
+            ui.set_width(340.0);
+            ui.heading("Import export file");
+            ui.label(RichText::new("Enter the password that was chosen when the file was exported.").weak());
+            ui.add_space(8.0);
+            let r = ui.add(egui::TextEdit::singleline(&mut dlg.password).password(true).hint_text("Export password").desired_width(f32::INFINITY).id_salt("import_pw_field"));
+            if !r.has_focus() && dlg.password.is_empty() {
+                r.request_focus();
+            }
+            ok |= r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+            ui.add_sized([320.0, 18.0], egui::Label::new(RichText::new(&dlg.error).color(Color32::LIGHT_RED)));
+            ui.horizontal(|ui| {
+                ok |= ui.button("Import").clicked();
+                close = ui.button("Cancel").clicked();
+            });
+        });
+        if ok {
+            let files = dlg.files.clone();
+            let mut pw = std::mem::take(&mut dlg.password);
+            if self.run_import(&files, Some(&pw)) {
+                close = true;
+            } else if let Some(d) = self.import_pw_dialog.as_mut() {
+                d.error = "Wrong export password".into();
+            }
+            wipe(&mut pw);
+        }
+        if close {
+            if let Some(mut d) = self.import_pw_dialog.take() {
+                wipe(&mut d.password);
+            }
+        }
+    }
+
+    fn open_export(&mut self, group: Option<String>) {
+        self.export_dialog = Some(ExportDialog { group, password: String::new(), confirm: String::new(), move_after: false, error: String::new() });
+    }
+
+    fn export_dialog_ui(&mut self, ui: &mut egui::Ui) {
+        let Some(dlg) = self.export_dialog.as_mut() else { return };
+        let all_groups = self.vault.data.all_groups();
+        let count = export::select(&self.vault.data, dlg.group.as_deref()).connections.len();
+        let mut ok = false;
+        let mut close = false;
+        egui::Modal::new(egui::Id::unique("export_dialog")).show(ui.ctx(), |ui| {
+            ui.set_width(380.0);
+            ui.heading("Export connections");
+            ui.label(RichText::new("Makes an encrypted .rdcx file with connections and passwords. Open it on the other computer with Import.").weak());
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                ui.label("What:");
+                let shown = dlg.group.clone().unwrap_or_else(|| "All connections".into());
+                egui::ComboBox::from_id_salt("export_scope").width(260.0).selected_text(shown).show_ui(ui, |ui| {
+                    ui.selectable_value(&mut dlg.group, None, "All connections");
+                    for g in &all_groups {
+                        ui.selectable_value(&mut dlg.group, Some(g.clone()), g);
+                    }
+                });
+            });
+            ui.label(RichText::new(format!("{count} connection(s)")).weak());
+            ui.add_space(6.0);
+            ui.add(egui::TextEdit::singleline(&mut dlg.password).password(true).hint_text("Password for the file").desired_width(f32::INFINITY).id_salt("export_pw"));
+            ui.add(egui::TextEdit::singleline(&mut dlg.confirm).password(true).hint_text("Repeat password").desired_width(f32::INFINITY).id_salt("export_pw2"));
+            ui.checkbox(&mut dlg.move_after, "Move: remove them from this computer after exporting");
+            ui.add_sized([360.0, 18.0], egui::Label::new(RichText::new(&dlg.error).color(Color32::LIGHT_RED)));
+            ui.horizontal(|ui| {
+                ok = ui.button("Export...").clicked();
+                close = ui.button("Cancel").clicked();
+            });
+        });
+        if ok {
+            if count == 0 {
+                dlg.error = "Nothing to export".into();
+            } else if dlg.password.len() < 8 {
+                dlg.error = "Use at least 8 characters".into();
+            } else if dlg.password != dlg.confirm {
+                dlg.error = "Passwords don't match".into();
+            } else if let Some(dest) = rfd::FileDialog::new()
+                .add_filter("myRDCcenter export", &[export::EXPORT_EXTENSION])
+                .set_file_name("myRDCcenter-export.rdcx")
+                .save_file()
+            {
+                match export::export_to(&self.vault.data, dlg.group.as_deref(), &dlg.password, &dest) {
+                    Ok(n) => {
+                        let group = dlg.group.clone();
+                        let moved = dlg.move_after;
+                        close = true;
+                        if moved {
+                            export::remove_exported(&mut self.vault.data, group.as_deref());
+                            self.selected = None;
+                            self.draft = None;
+                            self.selected_group = None;
+                            self.save_vault(&format!("Moved {n} connection(s) to {}", dest.display()));
+                        } else {
+                            self.status = format!("Exported {n} connection(s) to {}", dest.display());
+                        }
+                    }
+                    Err(e) => dlg.error = e,
+                }
+            }
+        }
+        if close {
+            if let Some(mut d) = self.export_dialog.take() {
+                wipe(&mut d.password);
+                wipe(&mut d.confirm);
+            }
         }
     }
 

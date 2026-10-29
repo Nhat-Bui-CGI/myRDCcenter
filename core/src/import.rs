@@ -40,14 +40,29 @@ impl ImportReport {
 }
 
 /// File types the Import button accepts.
-pub const IMPORT_EXTENSIONS: &[&str] = &["rdp", "rdm"];
+pub const IMPORT_EXTENSIONS: &[&str] = &["rdp", "rdm", "rdcx"];
 
-pub fn import_files(data: &mut VaultData, paths: &[PathBuf]) -> ImportReport {
+/// True if any of the files is an export file that needs its password.
+pub fn needs_password(paths: &[PathBuf]) -> bool {
+    paths.iter().any(|p| ext_of(p) == crate::export::EXPORT_EXTENSION)
+}
+
+fn ext_of(path: &std::path::Path) -> String {
+    path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default()
+}
+
+/// Import files into `data`. `password` is used for .rdcx export files.
+pub fn import_files(data: &mut VaultData, paths: &[PathBuf], password: Option<&str>) -> ImportReport {
     let mut report = ImportReport::default();
     for path in paths {
-        let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+        let ext = ext_of(path);
         let result: Result<RdmImport, String> = if ext == "rdm" {
             import_rdm(path)
+        } else if ext == crate::export::EXPORT_EXTENSION {
+            match password {
+                Some(pw) => crate::export::read_export(path, pw),
+                None => Err("This export file needs its password".into()),
+            }
         } else {
             import_rdp(path)
                 .map(|c| RdmImport { connections: vec![c], ..Default::default() })

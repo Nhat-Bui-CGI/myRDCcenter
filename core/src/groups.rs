@@ -126,6 +126,12 @@ impl VaultData {
         self.settings.collapsed_groups.retain(|g| !is_within(g, path));
     }
 
+    /// Remove a group and all its subgroups from the group list (connections are not touched).
+    pub fn delete_group_tree(&mut self, path: &str) {
+        self.groups.retain(|g| !is_within(g, path));
+        self.settings.collapsed_groups.retain(|g| !is_within(g, path));
+    }
+
     pub fn move_connection(&mut self, id: Uuid, group: &str) {
         let group = normalize(group);
         if let Some(c) = self.find_mut(id) {

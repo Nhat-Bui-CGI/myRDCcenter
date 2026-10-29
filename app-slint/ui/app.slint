@@ -162,6 +162,19 @@ export component MainWindow inherits Window {
     callback rename-group();
     callback delete-group();
     callback group-dialog-ok(string);
+    // Export / import of .rdcx files
+    in-out property <bool> export-open;
+    in property <[string]> export-scopes;     // "All connections", then group paths
+    in-out property <string> export-scope;
+    in property <string> export-count-text;
+    in property <string> export-error;
+    in-out property <bool> export-move;
+    in-out property <bool> import-pw-open;
+    in property <string> import-pw-error;
+    callback export-request(string);          // "" = all, or a group path
+    callback export-scope-changed(string);
+    callback export-ok(string, string);
+    callback import-pw-ok(string);
 
     if root.locked: LockScreen {
         creating: root.creating;
@@ -180,6 +193,7 @@ export component MainWindow inherits Window {
             Button { text: "New connection"; clicked => { root.new-connection(); } }
             Button { text: "New group"; clicked => { root.new-group(); } }
             Button { text: "Import"; clicked => { root.import-rdp(); } }
+            Button { text: "Export"; clicked => { root.export-request(""); } }
             Button { text: "Backup"; clicked => { root.backup(); } }
             Button { text: "Change password"; clicked => { root.change-pw-open = true; } }
             if root.remember-supported: CheckBox {
@@ -273,6 +287,7 @@ export component MainWindow inherits Window {
                     Button { text: "New connection here"; clicked => { root.new-connection-here(); } }
                     Button { text: "New subgroup"; clicked => { root.new-group(); } }
                     Button { text: "Rename / move"; clicked => { root.rename-group(); } }
+                    Button { text: "Export group"; clicked => { root.export-request(root.selected-group); } }
                     if !root.confirm-delete-group: Button { text: "Delete group"; clicked => { root.confirm-delete-group = true; } }
                     if root.confirm-delete-group: Button { text: "Really delete group?"; clicked => { root.delete-group(); } }
                     if root.confirm-delete-group: Button { text: "Cancel"; clicked => { root.confirm-delete-group = false; } }
@@ -414,6 +429,73 @@ export component MainWindow inherits Window {
                     spacing: 8px;
                     Button { text: "OK"; primary: true; clicked => { root.group-dialog-ok(gn.text); } }
                     Button { text: "Cancel"; clicked => { root.group-dialog-open = false; } }
+                }
+            }
+        }
+    }
+
+    // Export dialog
+    if root.export-open && !root.locked: Rectangle {
+        background: #00000080;
+        TouchArea {}
+        Rectangle {
+            width: 420px;
+            height: 360px;
+            background: Palette.background;
+            border-radius: 8px;
+            border-width: 1px;
+            border-color: Palette.border;
+            VerticalBox {
+                Text { text: "Export connections"; font-size: 16px; }
+                Text {
+                    text: "Makes an encrypted .rdcx file with connections and passwords. Open it on the other computer with Import.";
+                    wrap: word-wrap;
+                    color: Palette.foreground.with-alpha(0.7);
+                }
+                ComboBox {
+                    model: root.export-scopes;
+                    current-value <=> root.export-scope;
+                    selected(v) => { root.export-scope-changed(v); }
+                }
+                Text { text: root.export-count-text; color: Palette.foreground.with-alpha(0.6); }
+                ep := LineEdit { input-type: password; placeholder-text: "Password for the file"; }
+                ep2 := LineEdit { input-type: password; placeholder-text: "Repeat password"; }
+                CheckBox { text: "Move: remove them from this computer after exporting"; checked <=> root.export-move; }
+                Text { text: root.export-error; color: #ff7070; height: 18px; }
+                HorizontalLayout {
+                    spacing: 8px;
+                    Button { text: "Export..."; primary: true; clicked => { root.export-ok(ep.text, ep2.text); } }
+                    Button { text: "Cancel"; clicked => { root.export-open = false; ep.text = ""; ep2.text = ""; } }
+                }
+            }
+        }
+    }
+
+    // Password for importing an .rdcx file
+    if root.import-pw-open && !root.locked: Rectangle {
+        background: #00000080;
+        TouchArea {}
+        Rectangle {
+            width: 360px;
+            height: 200px;
+            background: Palette.background;
+            border-radius: 8px;
+            border-width: 1px;
+            border-color: Palette.border;
+            VerticalBox {
+                Text { text: "Import export file"; font-size: 16px; }
+                Text { text: "Enter the password chosen when the file was exported."; wrap: word-wrap; color: Palette.foreground.with-alpha(0.7); }
+                ip := LineEdit {
+                    input-type: password;
+                    placeholder-text: "Export password";
+                    accepted => { root.import-pw-ok(self.text); }
+                    init => { self.focus(); }
+                }
+                Text { text: root.import-pw-error; color: #ff7070; height: 18px; }
+                HorizontalLayout {
+                    spacing: 8px;
+                    Button { text: "Import"; primary: true; clicked => { root.import-pw-ok(ip.text); } }
+                    Button { text: "Cancel"; clicked => { root.import-pw-open = false; } }
                 }
             }
         }

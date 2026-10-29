@@ -1,6 +1,7 @@
 //! Shared core for myRDCcenter: data model, encrypted vault and RDP launching.
 //! Both UI front-ends (egui and Slint) build on this crate.
 
+pub mod export;
 pub mod groups;
 pub mod idle;
 pub mod import;

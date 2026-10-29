@@ -29,10 +29,11 @@ Go to [Releases](../../releases):
   - Pick a connection's group in its **Group** field. In the egui app, you can also right-click a connection and choose **Move to group**.
 - Host, port, user, domain, password, RD Gateway, screen size, all monitors, clipboard/drive sharing, admin session, notes
 - Double-click a connection, or click **Connect**, to start the session
-- **Import** existing `.rdp` files, or `.rdm` export files with all their folders
+- **Import** existing `.rdp` files, `.rdcx` exports, or `.rdm` export files with all their folders
   - RDP entries, folders and usernames are imported. Other entry types (SSH, web, ...) are skipped.
   - Passwords in `.rdm` files are encrypted by the program that made them, so they are not imported. Type them in again.
   - Importing the same file twice does not create duplicates.
+- **Export** to move connections to another PC: all of them or one group, to an encrypted `.rdcx` file with its own password (passwords included). Choose *Move* to remove them from this PC after export. Open the file on the other PC with **Import**.
 - Encrypted backup, change master password, auto-lock after idle time
 - **Remember on this computer** (Windows and macOS): tick it once, and the app opens without the master password. The key is protected by your computer login, using Windows DPAPI or the macOS Keychain. Anyone who can sign in to your computer as you can then open the vault. Untick it to ask for the password again. After auto-lock, click **Unlock with my computer login**.
 

@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use myrdc_core::{default_vault_path, groups, idle, import, keystore, rdp, Connection, Secret, TreeRow, Vault};
+use myrdc_core::{default_vault_path, export, groups, idle, import, keystore, rdp, Connection, Secret, TreeRow, Vault};
 use slint::{ComponentHandle, ModelRc, SharedString, Timer, TimerMode, VecModel};
 use uuid::Uuid;
 
@@ -20,6 +20,8 @@ struct State {
     /// Group dialog: Some(path) = renaming that group, None = new group under `dialog_parent`.
     dialog_renaming: Option<String>,
     dialog_parent: String,
+    /// .rdcx files waiting for their export password.
+    pending_import: Vec<PathBuf>,
     last_activity: Instant,
 }
 
@@ -35,7 +37,7 @@ fn main() -> Result<(), slint::PlatformError> {
     ui.set_remember_supported(keystore::SUPPORTED);
     ui.set_remember_label(keystore::label().into());
     ui.set_has_remembered(keystore::load(&path).is_some());
-    let state: Shared = Rc::new(RefCell::new(State { path, vault: None, selected: None, selected_group: None, dialog_renaming: None, dialog_parent: String::new(), last_activity: Instant::now() }));
+    let state: Shared = Rc::new(RefCell::new(State { path, vault: None, selected: None, selected_group: None, dialog_renaming: None, dialog_parent: String::new(), pending_import: Vec::new(), last_activity: Instant::now() }));
 
     // Every callback counts as activity for auto-lock (used when system idle time isn't available).
     let touch = {
@@ -261,6 +263,8 @@ fn main() -> Result<(), slint::PlatformError> {
                     drop(st);
                     ui.set_status(msg.into());
                     ui.set_group_dialog_open(false);
+    ui.set_export_open(false);
+    ui.set_import_pw_open(false);
                     select_group(&ui, &s, &path);
                 }
                 Err(e) => ui.set_group_dialog_error(e.into()),
@@ -338,28 +342,112 @@ fn main() -> Result<(), slint::PlatformError> {
             t();
             let ui = ui_w.unwrap();
             let Some(files) = rfd::FileDialog::new()
-                .add_filter("Remote Desktop (.rdp, .rdm)", import::IMPORT_EXTENSIONS)
+                .add_filter("Remote Desktop (.rdp, .rdm, .rdcx)", import::IMPORT_EXTENSIONS)
                 .pick_files()
+            else {
+                return;
+            };
+            if import::needs_password(&files) {
+                s.borrow_mut().pending_import = files;
+                ui.set_import_pw_error("".into());
+                ui.set_import_pw_open(true);
+            } else {
+                run_import(&ui, &s, &files, None);
+            }
+        }
+    });
+
+    ui.on_import_pw_ok({
+        let (ui_w, s, t) = (ui.as_weak(), state.clone(), touch.clone());
+        move |pw| {
+            t();
+            let ui = ui_w.unwrap();
+            let files = s.borrow().pending_import.clone();
+            if run_import(&ui, &s, &files, Some(&pw)) {
+                s.borrow_mut().pending_import.clear();
+                ui.set_import_pw_open(false);
+            } else {
+                ui.set_import_pw_error("Wrong export password".into());
+            }
+        }
+    });
+
+    ui.on_export_request({
+        let (ui_w, s, t) = (ui.as_weak(), state.clone(), touch.clone());
+        move |group| {
+            t();
+            let ui = ui_w.unwrap();
+            let st = s.borrow();
+            let Some(v) = st.vault.as_ref() else { return };
+            let mut scopes: Vec<SharedString> = vec![ALL_CONNECTIONS.into()];
+            scopes.extend(v.data.all_groups().into_iter().map(SharedString::from));
+            drop(st);
+            ui.set_export_scopes(ModelRc::new(VecModel::from(scopes)));
+            let scope: SharedString = if group.is_empty() { ALL_CONNECTIONS.into() } else { group };
+            ui.set_export_scope(scope.clone());
+            update_export_count(&ui, &s, &scope);
+            ui.set_export_error("".into());
+            ui.set_export_move(false);
+            ui.set_export_open(true);
+        }
+    });
+
+    ui.on_export_scope_changed({
+        let (ui_w, s) = (ui.as_weak(), state.clone());
+        move |scope| update_export_count(&ui_w.unwrap(), &s, &scope)
+    });
+
+    ui.on_export_ok({
+        let (ui_w, s, t) = (ui.as_weak(), state.clone(), touch.clone());
+        move |pw, confirm| {
+            t();
+            let ui = ui_w.unwrap();
+            if pw.len() < 8 {
+                ui.set_export_error("Use at least 8 characters".into());
+                return;
+            }
+            if pw != confirm {
+                ui.set_export_error("Passwords don't match".into());
+                return;
+            }
+            let scope = ui.get_export_scope();
+            let group = (scope != ALL_CONNECTIONS).then(|| scope.to_string());
+            let Some(dest) = rfd::FileDialog::new()
+                .add_filter("myRDCcenter export", &[export::EXPORT_EXTENSION])
+                .set_file_name("myRDCcenter-export.rdcx")
+                .save_file()
             else {
                 return;
             };
             let mut st = s.borrow_mut();
             let Some(v) = st.vault.as_mut() else { return };
-            let report = import::import_files(&mut v.data, &files);
-            let msg = match v.save() {
-                Ok(()) => report.message(),
-                Err(e) => e.to_string(),
-            };
-            ui.set_status(msg.into());
-            let last = report.last_id.and_then(|id| v.data.find(id).cloned());
-            if let Some(c) = last {
-                st.selected = Some(c.id);
-                st.selected_group = None;
-                ui.set_selected_group("".into());
-                show_draft(&ui, &c);
+            match export::export_to(&v.data, group.as_deref(), &pw, &dest) {
+                Ok(n) => {
+                    let msg = if ui.get_export_move() {
+                        export::remove_exported(&mut v.data, group.as_deref());
+                        match v.save() {
+                            Ok(()) => format!("Moved {n} connection(s) to {}", dest.display()),
+                            Err(e) => e.to_string(),
+                        }
+                    } else {
+                        format!("Exported {n} connection(s) to {}", dest.display())
+                    };
+                    let moved = ui.get_export_move();
+                    if moved {
+                        st.selected = None;
+                        st.selected_group = None;
+                    }
+                    drop(st);
+                    if moved {
+                        ui.set_has_draft(false);
+                        ui.set_selected_group("".into());
+                    }
+                    ui.set_status(msg.into());
+                    ui.set_export_open(false);
+                    refresh_list(&ui, &s);
+                }
+                Err(e) => ui.set_export_error(e.into()),
             }
-            drop(st);
-            refresh_list(&ui, &s);
         }
     });
 
@@ -447,6 +535,39 @@ fn main() -> Result<(), slint::PlatformError> {
     });
 
     ui.run()
+}
+
+const ALL_CONNECTIONS: &str = "All connections";
+
+fn update_export_count(ui: &MainWindow, s: &Shared, scope: &str) {
+    let group = (scope != ALL_CONNECTIONS).then_some(scope);
+    let n = s.borrow().vault.as_ref().map(|v| export::select(&v.data, group).connections.len()).unwrap_or(0);
+    ui.set_export_count_text(format!("{n} connection(s)").into());
+}
+
+/// Import files and show the result. Returns false when an export password was wrong.
+fn run_import(ui: &MainWindow, s: &Shared, files: &[PathBuf], password: Option<&str>) -> bool {
+    let mut st = s.borrow_mut();
+    let Some(v) = st.vault.as_mut() else { return true };
+    let report = import::import_files(&mut v.data, files, password);
+    if report.added == 0 && report.errors.iter().any(|e| e.contains("Wrong export password")) {
+        return false;
+    }
+    let msg = match v.save() {
+        Ok(()) => report.message(),
+        Err(e) => e.to_string(),
+    };
+    ui.set_status(msg.into());
+    let last = report.last_id.and_then(|id| v.data.find(id).cloned());
+    if let Some(c) = last {
+        st.selected = Some(c.id);
+        st.selected_group = None;
+        ui.set_selected_group("".into());
+        show_draft(ui, &c);
+    }
+    drop(st);
+    refresh_list(ui, s);
+    true
 }
 
 fn enter_vault(ui: &MainWindow, s: &Shared, v: Vault) {
