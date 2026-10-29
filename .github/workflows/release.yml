@@ -25,8 +25,9 @@ jobs:
         shell: bash
         run: |
           mkdir dist
-          cp target/release/RDS-center-egui.exe dist/RDS-center-egui-windows-x64.exe
-          cp target/release/RDS-center-slint.exe dist/RDS-center-slint-windows-x64.exe
+          cd target/release
+          7z a ../../dist/RDS-center-egui-windows-x64.zip RDS-center-egui.exe
+          7z a ../../dist/RDS-center-slint-windows-x64.zip RDS-center-slint.exe
       - uses: actions/upload-artifact@v4
         with: { name: windows, path: dist/* }
 

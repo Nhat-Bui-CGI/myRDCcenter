@@ -15,7 +15,7 @@ There are two front-ends. They share the same core and the same vault file, so y
 
 Go to [Releases](../../releases):
 
-- **Windows:** `RDS-center-egui-windows-x64.exe` or `RDS-center-slint-windows-x64.exe`. Each is a single `.exe`. It only needs DLLs that ship with Windows, because the C runtime is linked statically.
+- **Windows:** `RDS-center-egui-windows-x64.zip` or `RDS-center-slint-windows-x64.zip`. Each zip holds a single `.exe`. It only needs DLLs that ship with Windows, because the C runtime is linked statically.
 - **Linux:** `RDS-center-linux-x64.tar.gz`. It contains both apps.
 - **macOS:** `RDS-center-egui-macos.dmg` or `RDS-center-slint-macos.dmg`. These are universal builds for Apple Silicon and Intel. The app has no Apple developer signature. The first time you start it, right-click it and choose **Open**.
 
