@@ -4051,7 +4051,7 @@ dependencies = [
 
 [[package]]
 name = "rds-center-egui"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "eframe",
  "rds-core",
@@ -4061,7 +4061,7 @@ dependencies = [
 
 [[package]]
 name = "rds-center-slint"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "rds-core",
  "rfd",
@@ -4072,7 +4072,7 @@ dependencies = [
 
 [[package]]
 name = "rds-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "argon2",
  "chacha20poly1305",

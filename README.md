@@ -21,7 +21,10 @@ Go to [Releases](../../releases):
 
 ## Features
 
-- Connections grouped in folders (for example `Work/Servers`), with search
+- Groups and subgroups in a collapsible tree (for example `Work` > `Servers`), with search
+  - **New group** creates a group inside the selected group
+  - Click a group to select it. Click it again to fold it. Groups can be renamed, moved (type `Parent/Name`) and deleted. Deleting a group keeps its connections and moves them up one level.
+  - Pick a connection's group in its **Group** field. In the egui app, you can also right-click a connection and choose **Move to group**.
 - Host, port, user, domain, password, RD Gateway, screen size, all monitors, clipboard/drive sharing, admin session, notes
 - Double-click a connection, or click **Connect**, to start the session
 - Import existing `.rdp` files

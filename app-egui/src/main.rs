@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use eframe::egui::{self, Color32, RichText};
-use rds_core::{default_vault_path, rdp, Connection, Vault};
+use rds_core::{default_vault_path, groups, rdp, Connection, TreeRow, Vault};
 use uuid::Uuid;
 
 const LABEL_WIDTH: f32 = 130.0;
@@ -59,6 +59,33 @@ struct OpenVault {
     status: String,
     confirm_delete: bool,
     change_pw: Option<(String, String)>,
+    /// Group selected in the tree (when no connection is selected).
+    selected_group: Option<String>,
+    group_dialog: Option<GroupDialog>,
+    confirm_delete_group: bool,
+}
+
+/// "New group" / "Rename group" dialog.
+struct GroupDialog {
+    /// None = create a new group under `parent`; Some(path) = rename that group.
+    renaming: Option<String>,
+    parent: String,
+    name: String,
+    error: String,
+}
+
+/// Something the user did in the tree, applied after drawing it.
+enum TreeAction {
+    SelectConnection(Uuid),
+    Connect(Uuid),
+    DeleteConnection(Uuid),
+    Move(Uuid, String),
+    ClickGroup(String),
+    ToggleGroup(String),
+    NewConnectionIn(String),
+    NewGroupIn(String),
+    RenameGroup(String),
+    DeleteGroup(String),
 }
 
 struct App {
@@ -203,10 +230,14 @@ impl OpenVault {
             status: String::new(),
             confirm_delete: false,
             change_pw: None,
+            selected_group: None,
+            group_dialog: None,
+            confirm_delete_group: false,
         }
     }
 
     fn select(&mut self, id: Uuid) {
+        self.selected_group = None;
         self.selected = Some(id);
         self.draft = self.vault.data.find(id).cloned();
         self.show_password = false;
@@ -239,11 +270,13 @@ impl OpenVault {
 
         egui::Panel::top("toolbar").show(ui, |ui| {
             ui.horizontal(|ui| {
-                if ui.button("New").clicked() {
-                    let group = self.draft.as_ref().map(|d| d.group.clone()).unwrap_or_default();
-                    let c = Connection::new("New connection", &group);
-                    self.selected = Some(c.id);
-                    self.draft = Some(c);
+                if ui.button("New connection").clicked() {
+                    let group = self.current_group();
+                    self.new_connection(&group);
+                }
+                if ui.button("New group").clicked() {
+                    let group = self.current_group();
+                    self.open_new_group(&group);
                 }
                 if ui.button("Import .rdp").clicked() {
                     self.import();
@@ -283,55 +316,301 @@ impl OpenVault {
         egui::CentralPanel::default().show(ui, |ui| self.detail_ui(ui));
 
         self.change_password_ui(ui);
+        self.group_dialog_ui(ui);
         lock
     }
 
+    /// Group that new items go into: the selected group, or the selected connection's group.
+    fn current_group(&self) -> String {
+        if let Some(g) = &self.selected_group {
+            return g.clone();
+        }
+        self.draft.as_ref().map(|d| groups::normalize(&d.group)).unwrap_or_default()
+    }
+
+    fn new_connection(&mut self, group: &str) {
+        let c = Connection::new("New connection", group);
+        self.selected_group = None;
+        self.selected = Some(c.id);
+        self.draft = Some(c);
+        self.confirm_delete = false;
+    }
+
+    fn open_new_group(&mut self, parent: &str) {
+        self.group_dialog = Some(GroupDialog { renaming: None, parent: parent.to_string(), name: String::new(), error: String::new() });
+    }
+
+    fn select_group(&mut self, path: &str) {
+        self.selected_group = Some(path.to_string());
+        self.selected = None;
+        self.draft = None;
+        self.confirm_delete = false;
+        self.confirm_delete_group = false;
+    }
+
     fn list_ui(&mut self, ui: &mut egui::Ui) {
-        let mut clicked = None;
-        let mut double = None;
+        let mut action = None;
+        let rows = self.vault.data.tree_rows(&self.search);
+        let all_groups = self.vault.data.all_groups();
         egui::ScrollArea::vertical().id_salt("list_scroll").auto_shrink([false, false]).show(ui, |ui| {
-            let list = self.vault.data.sorted_filtered(&self.search);
-            let mut current_group: Option<&str> = None;
-            for c in list {
-                if current_group != Some(c.group.as_str()) {
-                    current_group = Some(&c.group);
-                    ui.add_space(6.0);
-                    let title = if c.group.is_empty() { "(no folder)" } else { &c.group };
-                    ui.label(RichText::new(title).strong());
+            ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
+                ui.spacing_mut().item_spacing.y = 2.0;
+                for row in &rows {
+                    match row {
+                        TreeRow::Group { path, name, depth, expanded, count } => {
+                            let selected = self.selected_group.as_deref() == Some(path.as_str());
+                            ui.horizontal(|ui| {
+                                ui.add_space(*depth as f32 * 16.0);
+                                if triangle(ui, *expanded).clicked() {
+                                    action = Some(TreeAction::ToggleGroup(path.clone()));
+                                }
+                                let label = RichText::new(format!("{name}  ({count})")).strong();
+                                let r = ui.add(egui::Button::selectable(selected, label));
+                                if r.clicked() {
+                                    action = Some(TreeAction::ClickGroup(path.clone()));
+                                }
+                                r.context_menu(|ui| {
+                                    if ui.button("New connection here").clicked() {
+                                        action = Some(TreeAction::NewConnectionIn(path.clone()));
+                                    }
+                                    if ui.button("New subgroup").clicked() {
+                                        action = Some(TreeAction::NewGroupIn(path.clone()));
+                                    }
+                                    if ui.button("Rename / move").clicked() {
+                                        action = Some(TreeAction::RenameGroup(path.clone()));
+                                    }
+                                    if ui.button("Delete group").clicked() {
+                                        action = Some(TreeAction::DeleteGroup(path.clone()));
+                                    }
+                                });
+                            });
+                        }
+                        TreeRow::Connection { id, name, address, depth } => {
+                            let selected = self.selected == Some(*id);
+                            ui.horizontal(|ui| {
+                                // Line up with group names (indent + triangle width).
+                                ui.add_space(*depth as f32 * 16.0 + 18.0);
+                                let r = ui.add(egui::Button::selectable(selected, name.as_str())).on_hover_text(address);
+                                if r.clicked() {
+                                    action = Some(TreeAction::SelectConnection(*id));
+                                }
+                                if r.double_clicked() {
+                                    action = Some(TreeAction::Connect(*id));
+                                }
+                                r.context_menu(|ui| {
+                                    if ui.button("Connect").clicked() {
+                                        action = Some(TreeAction::Connect(*id));
+                                    }
+                                    ui.menu_button("Move to group", |ui| {
+                                        if ui.button("(no group)").clicked() {
+                                            action = Some(TreeAction::Move(*id, String::new()));
+                                        }
+                                        for g in &all_groups {
+                                            if ui.button(g).clicked() {
+                                                action = Some(TreeAction::Move(*id, g.clone()));
+                                            }
+                                        }
+                                    });
+                                    if ui.button("Delete").clicked() {
+                                        action = Some(TreeAction::DeleteConnection(*id));
+                                    }
+                                });
+                            });
+                        }
+                    }
                 }
-                let selected = self.selected == Some(c.id);
-                let r = ui
-                    .with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
-                        ui.add(egui::Button::selectable(selected, format!("    {}", c.display_name())))
-                    })
-                    .inner;
-                let r = r.on_hover_text(c.address());
-                if r.clicked() {
-                    clicked = Some(c.id);
-                }
-                if r.double_clicked() {
-                    double = Some(c.id);
-                }
-            }
-            if self.vault.data.connections.is_empty() {
-                ui.label(RichText::new("No connections yet. Click New.").weak());
+            });
+            if rows.is_empty() {
+                let text = if self.search.is_empty() { "No connections yet. Click New connection." } else { "Nothing found." };
+                ui.label(RichText::new(text).weak());
             }
         });
-        if let Some(id) = clicked {
-            self.select(id);
+        if let Some(a) = action {
+            self.apply(a);
         }
-        if let Some(id) = double {
-            if let Some(c) = self.vault.data.find(id).cloned() {
-                self.connect(&c);
+    }
+
+    fn apply(&mut self, action: TreeAction) {
+        match action {
+            TreeAction::SelectConnection(id) => self.select(id),
+            TreeAction::Connect(id) => {
+                self.select(id);
+                if let Some(c) = self.vault.data.find(id).cloned() {
+                    self.connect(&c);
+                }
             }
+            TreeAction::DeleteConnection(id) => {
+                self.select(id);
+                self.confirm_delete = true;
+            }
+            TreeAction::Move(id, group) => {
+                self.vault.data.move_connection(id, &group);
+                if let Some(d) = self.draft.as_mut().filter(|d| d.id == id) {
+                    d.group = group.clone();
+                }
+                self.save_vault(&format!("Moved to {}", if group.is_empty() { "(no group)" } else { &group }));
+            }
+            TreeAction::ClickGroup(path) => {
+                if self.selected_group.as_deref() == Some(path.as_str()) {
+                    let collapsed = self.vault.data.is_collapsed(&path);
+                    self.vault.data.set_collapsed(&path, !collapsed);
+                    let _ = self.vault.save();
+                } else {
+                    self.select_group(&path);
+                    if self.vault.data.is_collapsed(&path) {
+                        self.vault.data.set_collapsed(&path, false);
+                        let _ = self.vault.save();
+                    }
+                }
+            }
+            TreeAction::ToggleGroup(path) => {
+                let collapsed = self.vault.data.is_collapsed(&path);
+                self.vault.data.set_collapsed(&path, !collapsed);
+                let _ = self.vault.save();
+            }
+            TreeAction::NewConnectionIn(path) => self.new_connection(&path),
+            TreeAction::NewGroupIn(path) => self.open_new_group(&path),
+            TreeAction::RenameGroup(path) => {
+                self.group_dialog = Some(GroupDialog {
+                    renaming: Some(path.clone()),
+                    parent: String::new(),
+                    name: path,
+                    error: String::new(),
+                });
+            }
+            TreeAction::DeleteGroup(path) => {
+                self.select_group(&path);
+                self.confirm_delete_group = true;
+            }
+        }
+    }
+
+    fn save_vault(&mut self, ok_message: &str) {
+        self.status = match self.vault.save() {
+            Ok(()) => ok_message.to_string(),
+            Err(e) => e.to_string(),
+        };
+    }
+
+    fn group_ui(&mut self, ui: &mut egui::Ui, path: String) {
+        let count = self.vault.data.count_in(&path);
+        ui.heading(groups::leaf(&path));
+        ui.label(RichText::new(&path).weak());
+        ui.add_space(4.0);
+        ui.label(format!("{count} connection(s) in this group and its subgroups."));
+        ui.add_space(12.0);
+        let mut action = None;
+        ui.horizontal(|ui| {
+            if ui.button("New connection here").clicked() {
+                action = Some(TreeAction::NewConnectionIn(path.clone()));
+            }
+            if ui.button("New subgroup").clicked() {
+                action = Some(TreeAction::NewGroupIn(path.clone()));
+            }
+            if ui.button("Rename / move").clicked() {
+                action = Some(TreeAction::RenameGroup(path.clone()));
+            }
+            if self.confirm_delete_group {
+                if ui.button(RichText::new("Really delete group?").color(Color32::LIGHT_RED)).clicked() {
+                    self.vault.data.delete_group(&path);
+                    self.selected_group = None;
+                    self.confirm_delete_group = false;
+                    self.save_vault("Group deleted. Its connections moved up one level.");
+                }
+                if ui.button("Cancel").clicked() {
+                    self.confirm_delete_group = false;
+                }
+            } else if ui.button("Delete group").clicked() {
+                self.confirm_delete_group = true;
+            }
+        });
+        if self.confirm_delete_group {
+            ui.add_space(6.0);
+            ui.label(RichText::new("Connections in this group are kept and move up one level.").weak());
+        }
+        if let Some(a) = action {
+            self.apply(a);
+        }
+    }
+
+    fn group_dialog_ui(&mut self, ui: &mut egui::Ui) {
+        let Some(dlg) = self.group_dialog.as_mut() else { return };
+        let mut close = false;
+        let mut apply = false;
+        egui::Modal::new(egui::Id::unique("group_dialog")).show(ui.ctx(), |ui| {
+            ui.set_width(340.0);
+            match &dlg.renaming {
+                Some(old) => {
+                    ui.heading("Rename group");
+                    ui.label(RichText::new(format!("Use / to move it, e.g. Work/{}", groups::leaf(old))).weak());
+                }
+                None => {
+                    ui.heading("New group");
+                    if !dlg.parent.is_empty() {
+                        ui.label(RichText::new(format!("Inside {}", dlg.parent)).weak());
+                    }
+                }
+            }
+            ui.add_space(8.0);
+            let r = ui.add(egui::TextEdit::singleline(&mut dlg.name).hint_text("Group name").desired_width(f32::INFINITY).id_salt("group_name"));
+            if !r.has_focus() && dlg.name.is_empty() {
+                r.request_focus();
+            }
+            if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                apply = true;
+            }
+            ui.add_sized([320.0, 18.0], egui::Label::new(RichText::new(&dlg.error).color(Color32::LIGHT_RED)));
+            ui.horizontal(|ui| {
+                apply |= ui.button("OK").clicked();
+                close = ui.button("Cancel").clicked();
+            });
+        });
+        if apply {
+            let name = groups::normalize(&dlg.name);
+            if name.is_empty() {
+                dlg.error = "Enter a name".into();
+            } else {
+                match dlg.renaming.clone() {
+                    Some(old) => match self.vault.data.rename_group(&old, &name) {
+                        Ok(()) => {
+                            if let Some(d) = self.draft.as_mut() {
+                                if groups::is_within(&d.group, &old) {
+                                    d.group = format!("{name}{}", &d.group[old.len()..]);
+                                }
+                            }
+                            self.selected_group = Some(name.clone());
+                            self.save_vault("Group renamed");
+                            close = true;
+                        }
+                        Err(e) => self.group_dialog.as_mut().unwrap().error = e,
+                    },
+                    None => {
+                        let full = if dlg.parent.is_empty() { name } else { format!("{}/{name}", dlg.parent) };
+                        let path = self.vault.data.add_group(&full);
+                        self.vault.data.set_collapsed(&dlg.parent, false);
+                        self.select_group(&path);
+                        self.save_vault("Group created");
+                        close = true;
+                    }
+                }
+            }
+        }
+        if close {
+            self.group_dialog = None;
         }
     }
 
     fn detail_ui(&mut self, ui: &mut egui::Ui) {
-        let Some(d) = self.draft.as_mut() else {
-            ui.centered_and_justified(|ui| ui.label(RichText::new("Select a connection, or double-click to connect").weak()));
+        if self.draft.is_none() {
+            if let Some(path) = self.selected_group.clone() {
+                self.group_ui(ui, path);
+            } else {
+                ui.centered_and_justified(|ui| ui.label(RichText::new("Select a connection, or double-click to connect").weak()));
+            }
             return;
-        };
+        }
+        let all_groups = self.vault.data.all_groups();
+        let Some(d) = self.draft.as_mut() else { return };
         let mut do_save = false;
         let mut do_connect = false;
         let mut do_delete = false;
@@ -347,7 +626,15 @@ impl OpenVault {
                     ui.end_row();
                 };
                 text(ui, "Name", &mut d.name, "f_name");
-                text(ui, "Folder", &mut d.group, "f_group");
+                ui.label("Group");
+                let shown = if d.group.is_empty() { "(no group)".to_string() } else { d.group.clone() };
+                egui::ComboBox::from_id_salt("f_group").width(FIELD_WIDTH - 8.0).selected_text(shown).show_ui(ui, |ui| {
+                    ui.selectable_value(&mut d.group, String::new(), "(no group)");
+                    for g in &all_groups {
+                        ui.selectable_value(&mut d.group, g.clone(), g);
+                    }
+                });
+                ui.end_row();
                 text(ui, "Host", &mut d.host, "f_host");
                 ui.label("Port");
                 ui.add(egui::DragValue::new(&mut d.port).range(1..=65535));
@@ -495,4 +782,18 @@ impl OpenVault {
             }
         }
     }
+}
+
+/// A small clickable expand/collapse triangle.
+fn triangle(ui: &mut egui::Ui, expanded: bool) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::click());
+    let color = if response.hovered() { ui.visuals().strong_text_color() } else { ui.visuals().text_color() };
+    let c = rect.center();
+    let points = if expanded {
+        vec![c + egui::vec2(-4.0, -2.0), c + egui::vec2(4.0, -2.0), c + egui::vec2(0.0, 3.0)]
+    } else {
+        vec![c + egui::vec2(-2.0, -4.0), c + egui::vec2(3.0, 0.0), c + egui::vec2(-2.0, 4.0)]
+    };
+    ui.painter().add(egui::Shape::convex_polygon(points, color, egui::Stroke::NONE));
+    response
 }

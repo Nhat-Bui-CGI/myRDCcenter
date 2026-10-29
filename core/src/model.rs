@@ -7,6 +7,8 @@ use zeroize::Zeroize;
 #[serde(default)]
 pub struct VaultData {
     pub connections: Vec<Connection>,
+    /// Groups created by the user, as "/" separated paths. Kept so empty groups survive.
+    pub groups: Vec<String>,
     pub settings: Settings,
 }
 
@@ -15,11 +17,13 @@ pub struct VaultData {
 pub struct Settings {
     /// Lock the vault after this many idle minutes (0 = never).
     pub auto_lock_minutes: u32,
+    /// Group paths that are folded in the tree.
+    pub collapsed_groups: Vec<String>,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { auto_lock_minutes: 10 }
+        Self { auto_lock_minutes: 10, collapsed_groups: Vec::new() }
     }
 }
 
