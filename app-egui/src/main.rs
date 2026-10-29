@@ -26,7 +26,12 @@ fn main() -> eframe::Result {
             .with_title("myRDCcenter")
             .with_inner_size([1000.0, 640.0])
             .with_min_inner_size([720.0, 440.0])
-            .with_transparent(false),
+            .with_transparent(false)
+            .with_icon(egui::IconData {
+                rgba: include_bytes!("../../assets/icon-128.rgba").to_vec(),
+                width: 128,
+                height: 128,
+            }),
         renderer: eframe::Renderer::Glow,
         multisampling: 0,
         centered: true,

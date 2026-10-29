@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=myRDCcenter (slint)
+Comment=Offline Remote Desktop connection manager
+Exec=myRDCcenter-slint
+Icon=myRDCcenter
+Categories=Network;RemoteAccess;
+Terminal=false

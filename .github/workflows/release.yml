@@ -43,6 +43,8 @@ jobs:
         run: |
           mkdir -p dist pkg/myRDCcenter
           cp target/release/myRDCcenter-egui target/release/myRDCcenter-slint README.md pkg/myRDCcenter/
+          cp assets/icon-256.png pkg/myRDCcenter/myRDCcenter.png
+          cp packaging/linux/*.desktop pkg/myRDCcenter/
           tar -C pkg -czf dist/myRDCcenter-linux-x64.tar.gz myRDCcenter
       - uses: actions/upload-artifact@v4
         with: { name: linux, path: dist/* }
@@ -61,10 +63,18 @@ jobs:
         run: |
           mkdir dist
           VERSION=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+          # Build the .icns app icon from the 1024 px PNG.
+          mkdir icon.iconset
+          for size in 16 32 128 256 512; do
+            sips -z $size $size assets/icon-1024.png --out icon.iconset/icon_${size}x${size}.png
+            sips -z $((size*2)) $((size*2)) assets/icon-1024.png --out icon.iconset/icon_${size}x${size}@2x.png
+          done
+          iconutil -c icns icon.iconset -o AppIcon.icns
           for app in egui slint; do
             BIN=myRDCcenter-$app
             APP="dist/$app/myRDCcenter ($app).app"
-            mkdir -p "$APP/Contents/MacOS"
+            mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+            cp AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
             lipo -create -output "$APP/Contents/MacOS/$BIN" \
               target/aarch64-apple-darwin/release/$BIN target/x86_64-apple-darwin/release/$BIN
             sed -e "s/@BIN@/$BIN/g" -e "s/@NAME@/myRDCcenter ($app)/g" -e "s/@VERSION@/$VERSION/g" \

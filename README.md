@@ -1,3 +1,5 @@
+<img src="assets/icon-256.png" width="96" alt="">
+
 # myRDCcenter
 
 An offline Remote Desktop (RDP) connection manager in Rust. It runs on Windows, Linux and macOS.
@@ -16,7 +18,7 @@ There are two front-ends. They share the same core and the same vault file, so y
 Go to [Releases](../../releases):
 
 - **Windows:** `myRDCcenter-egui-windows-x64.zip` or `myRDCcenter-slint-windows-x64.zip`. Each zip holds a single `.exe`. It only needs DLLs that ship with Windows, because the C runtime is linked statically.
-- **Linux:** `myRDCcenter-linux-x64.tar.gz`. It contains both apps.
+- **Linux:** `myRDCcenter-linux-x64.tar.gz`. It contains both apps, an icon and `.desktop` files. To add the apps to your menu, copy the `.desktop` files to `~/.local/share/applications/` and `myRDCcenter.png` to `~/.local/share/icons/`. The apps must be on your `PATH`.
 - **macOS:** `myRDCcenter-egui-macos.dmg` or `myRDCcenter-slint-macos.dmg`. These are universal builds for Apple Silicon and Intel. The app has no Apple developer signature. The first time you start it, right-click it and choose **Open**.
 
 ## Features

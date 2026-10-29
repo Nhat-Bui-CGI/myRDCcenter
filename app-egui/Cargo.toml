@@ -13,3 +13,6 @@ myrdc-core = { path = "../core" }
 eframe = { version = "0.37", default-features = false, features = ["glow", "default_fonts", "x11", "wayland"] }
 rfd = "0.17"
 uuid = "1"
+
+[build-dependencies]
+winresource = "0.1"

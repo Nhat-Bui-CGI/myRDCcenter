@@ -15,4 +15,5 @@ rfd = "0.17"
 uuid = "1"
 
 [build-dependencies]
+winresource = "0.1"
 slint-build = "1.18"

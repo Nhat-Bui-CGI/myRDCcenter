@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#25324d"/><stop offset="1" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="screen" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3b8ff0"/><stop offset="1" stop-color="#1c4f9e"/>
+    </linearGradient>
+    <linearGradient id="gear" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ff7a2e"/><stop offset="1" stop-color="#d9480f"/>
+    </linearGradient>
+    <clipPath id="tile"><rect x="32" y="32" width="960" height="960" rx="210"/></clipPath>
+  </defs>
+  <rect x="32" y="32" width="960" height="960" rx="210" fill="url(#bg)"/>
+  <g clip-path="url(#tile)">
+    <!-- monitor -->
+    <rect x="140" y="170" width="680" height="470" rx="48" fill="#e6ecf5"/>
+    <rect x="176" y="206" width="608" height="398" rx="22" fill="url(#screen)"/>
+    <!-- remote window on the screen -->
+    <rect x="226" y="256" width="320" height="220" rx="16" fill="#ffffff" fill-opacity="0.18"/>
+    <rect x="226" y="256" width="320" height="44" rx="16" fill="#ffffff" fill-opacity="0.35"/>
+    <path d="M 410 640 L 550 640 L 575 740 L 385 740 Z" fill="#c9d3e3"/>
+    <rect x="310" y="730" width="340" height="44" rx="22" fill="#e6ecf5"/>
+    <!-- Rust gear -->
+    <circle cx="716" cy="716" r="234" fill="#0f172a"/>
+    <path d="M 689.7 550.1 L 696.2 506.9 L 735.8 506.9 L 742.3 550.1 L 792.3 566.3 L 822.9 535.2 L 854.9 558.5 L 834.8 597.2 L 865.7 639.7 L 908.7 632.6 L 920.9 670.2 L 881.9 689.7 L 881.9 742.3 L 920.9 761.8 L 908.7 799.4 L 865.7 792.3 L 834.8 834.8 L 854.9 873.5 L 822.9 896.8 L 792.3 865.7 L 742.3 881.9 L 735.8 925.1 L 696.2 925.1 L 689.7 881.9 L 639.7 865.7 L 609.1 896.8 L 577.1 873.5 L 597.2 834.8 L 566.3 792.3 L 523.3 799.4 L 511.1 761.8 L 550.1 742.3 L 550.1 689.7 L 511.1 670.2 L 523.3 632.6 L 566.3 639.7 L 597.2 597.2 L 577.1 558.5 L 609.1 535.2 L 639.7 566.3 Z" fill="url(#gear)"/>
+    <circle cx="716" cy="716" r="132" fill="#b83d0b" fill-opacity="0.35"/>
+    <circle cx="716" cy="716" r="70" fill="#0f172a"/>
+  </g>
+</svg>

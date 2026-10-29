@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=myRDCcenter (egui)
+Comment=Offline Remote Desktop connection manager
+Exec=myRDCcenter-egui
+Icon=myRDCcenter
+Categories=Network;RemoteAccess;
+Terminal=false

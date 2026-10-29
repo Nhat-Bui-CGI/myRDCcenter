@@ -3088,7 +3088,7 @@ dependencies = [
 
 [[package]]
 name = "myrdc-core"
-version = "0.3.0"
+version = "0.5.0"
 dependencies = [
  "argon2",
  "chacha20poly1305",
@@ -3105,23 +3105,25 @@ dependencies = [
 
 [[package]]
 name = "myrdccenter-egui"
-version = "0.3.0"
+version = "0.5.0"
 dependencies = [
  "eframe",
  "myrdc-core",
  "rfd",
  "uuid",
+ "winresource",
 ]
 
 [[package]]
 name = "myrdccenter-slint"
-version = "0.3.0"
+version = "0.5.0"
 dependencies = [
  "myrdc-core",
  "rfd",
  "slint",
  "slint-build",
  "uuid",
+ "winresource",
 ]
 
 [[package]]
@@ -6144,6 +6146,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "winresource"
+version = "0.1.34"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2bc6d36480b829272a5bdabf08e6dca8004761c1da7e35efef800540c66221b"
+dependencies = [
+ "toml",
+ "version_check",
 ]
 
 [[package]]

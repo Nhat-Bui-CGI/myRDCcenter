@@ -6,6 +6,7 @@
   <key>CFBundleDisplayName</key><string>@NAME@</string>
   <key>CFBundleExecutable</key><string>@BIN@</string>
   <key>CFBundleIdentifier</key><string>com.nhatbui.@BIN@</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>@VERSION@</string>
   <key>CFBundleVersion</key><string>@VERSION@</string>
