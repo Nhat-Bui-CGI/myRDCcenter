@@ -61,7 +61,7 @@ On Linux, you also need these packages: `libwayland-dev libxkbcommon-dev libfont
 
 Run the core tests with `cargo test -p rds-core`.
 
-To make a release, push a tag such as `v0.1.0`. GitHub Actions then builds all the files listed under Download.
+To make a release, push a tag such as `v0.1.0`, or run the **Release** workflow from the Actions tab and enter the tag name. GitHub Actions then builds all the files listed under Download.
 
 ## egui flicker
 
