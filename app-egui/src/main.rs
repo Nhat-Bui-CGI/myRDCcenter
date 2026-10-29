@@ -239,19 +239,19 @@ impl OpenVault {
 
         egui::Panel::top("toolbar").show(ui, |ui| {
             ui.horizontal(|ui| {
-                if ui.button("➕ New").clicked() {
+                if ui.button("New").clicked() {
                     let group = self.draft.as_ref().map(|d| d.group.clone()).unwrap_or_default();
                     let c = Connection::new("New connection", &group);
                     self.selected = Some(c.id);
                     self.draft = Some(c);
                 }
-                if ui.button("📂 Import .rdp").clicked() {
+                if ui.button("Import .rdp").clicked() {
                     self.import();
                 }
-                if ui.button("💾 Backup").clicked() {
+                if ui.button("Backup").clicked() {
                     self.backup();
                 }
-                if ui.button("🔑 Change password").clicked() {
+                if ui.button("Change password").clicked() {
                     self.change_pw = Some(Default::default());
                 }
                 ui.separator();
@@ -262,7 +262,7 @@ impl OpenVault {
                     let _ = self.vault.save();
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button("🔒 Lock").clicked() {
+                    if ui.button("Lock").clicked() {
                         lock = true;
                     }
                 });
@@ -275,7 +275,7 @@ impl OpenVault {
 
         egui::Panel::left("list").resizable(true).default_size(280.0).size_range(200.0..=500.0).show(ui, |ui| {
             ui.add_space(4.0);
-            ui.add(egui::TextEdit::singleline(&mut self.search).hint_text("🔍 Search").desired_width(f32::INFINITY).id_salt("search"));
+            ui.add(egui::TextEdit::singleline(&mut self.search).hint_text("Search").desired_width(f32::INFINITY).id_salt("search"));
             ui.add_space(4.0);
             self.list_ui(ui);
         });
@@ -297,13 +297,14 @@ impl OpenVault {
                     current_group = Some(&c.group);
                     ui.add_space(6.0);
                     let title = if c.group.is_empty() { "(no folder)" } else { &c.group };
-                    ui.label(RichText::new(format!("📁 {title}")).strong());
+                    ui.label(RichText::new(title).strong());
                 }
                 let selected = self.selected == Some(c.id);
-                let r = ui.add_sized(
-                    [ui.available_width(), 22.0],
-                    egui::Button::selectable(selected, format!("   🖥 {}", c.display_name())),
-                );
+                let r = ui
+                    .with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
+                        ui.add(egui::Button::selectable(selected, format!("    {}", c.display_name())))
+                    })
+                    .inner;
                 let r = r.on_hover_text(c.address());
                 if r.clicked() {
                     clicked = Some(c.id);
@@ -313,7 +314,7 @@ impl OpenVault {
                 }
             }
             if self.vault.data.connections.is_empty() {
-                ui.label(RichText::new("No connections yet. Click ➕ New.").weak());
+                ui.label(RichText::new("No connections yet. Click New.").weak());
             }
         });
         if let Some(id) = clicked {
@@ -358,10 +359,10 @@ impl OpenVault {
                     ui.add(
                         egui::TextEdit::singleline(&mut *d.password)
                             .password(!self.show_password)
-                            .desired_width(FIELD_WIDTH - 36.0)
+                            .desired_width(FIELD_WIDTH - 56.0)
                             .id_salt("f_pw"),
                     );
-                    if ui.add_sized([28.0, 20.0], egui::Button::new("👁")).on_hover_text("Show / hide").clicked() {
+                    if ui.add_sized([48.0, 20.0], egui::Button::new(if self.show_password { "Hide" } else { "Show" })).on_hover_text("Show / hide").clicked() {
                         self.show_password = !self.show_password;
                     }
                 });
@@ -389,14 +390,14 @@ impl OpenVault {
 
             ui.add_space(12.0);
             ui.horizontal(|ui| {
-                do_connect = ui.add(egui::Button::new(RichText::new("▶ Connect").strong())).clicked();
-                do_save = ui.button("💾 Save").clicked();
+                do_connect = ui.add(egui::Button::new(RichText::new("Connect").strong())).clicked();
+                do_save = ui.button("Save").clicked();
                 if self.confirm_delete {
                     do_delete = ui.button(RichText::new("Really delete?").color(Color32::LIGHT_RED)).clicked();
                     if ui.button("Cancel").clicked() {
                         self.confirm_delete = false;
                     }
-                } else if ui.button("🗑 Delete").clicked() {
+                } else if ui.button("Delete").clicked() {
                     self.confirm_delete = true;
                 }
             });

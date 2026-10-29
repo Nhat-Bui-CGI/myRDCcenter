@@ -6,7 +6,7 @@ use crate::model::Connection;
 
 /// How long the temporary .rdp file and the session credential live after launch.
 /// Long enough for mstsc to read them, even if a certificate prompt is shown first.
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 const CLEANUP_AFTER: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// Text of an .rdp file for this connection (no password inside).
@@ -98,45 +98,151 @@ fn decode_text(bytes: &[u8]) -> String {
 
 /// Start a Remote Desktop session.
 ///
-/// Writes a temporary .rdp file, stores the password as a session-only Windows
-/// credential (TERMSRV/host) so mstsc logs in without asking, starts mstsc, and
-/// removes both again shortly after.
-#[cfg(windows)]
+/// - Windows: writes a temporary .rdp file, stores the password as a session-only
+///   credential (TERMSRV/host) so mstsc logs in without asking, starts mstsc, and
+///   removes both again shortly after.
+/// - macOS: opens a temporary .rdp file with the default app (Windows App /
+///   Microsoft Remote Desktop). That app asks for the password itself.
+/// - Linux: starts FreeRDP (xfreerdp3, sdl-freerdp3 or xfreerdp) and passes the
+///   password on stdin, never on the command line.
 pub fn launch(c: &Connection) -> Result<(), String> {
-    use std::process::Command;
-
     if c.host.trim().is_empty() {
         return Err("No host set".into());
     }
+    platform::launch(c)
+}
+
+#[cfg(any(windows, target_os = "macos"))]
+fn write_temp_rdp(c: &Connection) -> Result<std::path::PathBuf, String> {
     let path = std::env::temp_dir().join(format!("rds-center-{}.rdp", uuid::Uuid::new_v4()));
     let mut bytes = vec![0xFF, 0xFE];
     for u in build_rdp_file(c).encode_utf16() {
         bytes.extend_from_slice(&u.to_le_bytes());
     }
     std::fs::write(&path, bytes).map_err(|e| format!("Could not write .rdp file: {e}"))?;
-
-    let target = format!("TERMSRV/{}", c.host.trim());
-    let has_cred = !c.password.is_empty() && !c.username.trim().is_empty();
-    if has_cred {
-        win_cred::write(&target, &c.full_username(), &c.password)?;
-    }
-
-    let spawned = Command::new("mstsc.exe").arg(&path).spawn();
-
-    std::thread::spawn(move || {
-        std::thread::sleep(CLEANUP_AFTER);
-        let _ = std::fs::remove_file(&path);
-        if has_cred {
-            win_cred::delete(&target);
-        }
-    });
-
-    spawned.map(|_| ()).map_err(|e| format!("Could not start mstsc: {e}"))
+    Ok(path)
 }
 
-#[cfg(not(windows))]
-pub fn launch(_c: &Connection) -> Result<(), String> {
-    Err("Connecting only works on Windows".into())
+#[cfg(windows)]
+mod platform {
+    use super::*;
+    use std::process::Command;
+
+    pub fn launch(c: &Connection) -> Result<(), String> {
+        let path = write_temp_rdp(c)?;
+        let target = format!("TERMSRV/{}", c.host.trim());
+        let has_cred = !c.password.is_empty() && !c.username.trim().is_empty();
+        if has_cred {
+            super::win_cred::write(&target, &c.full_username(), &c.password)?;
+        }
+
+        let spawned = Command::new("mstsc.exe").arg(&path).spawn();
+
+        std::thread::spawn(move || {
+            std::thread::sleep(CLEANUP_AFTER);
+            let _ = std::fs::remove_file(&path);
+            if has_cred {
+                super::win_cred::delete(&target);
+            }
+        });
+
+        spawned.map(|_| ()).map_err(|e| format!("Could not start mstsc: {e}"))
+    }
+}
+
+#[cfg(target_os = "macos")]
+mod platform {
+    use super::*;
+    use std::process::Command;
+
+    pub fn launch(c: &Connection) -> Result<(), String> {
+        let path = write_temp_rdp(c)?;
+        let status = Command::new("open").arg(&path).status();
+        std::thread::spawn(move || {
+            std::thread::sleep(CLEANUP_AFTER);
+            let _ = std::fs::remove_file(&path);
+        });
+        match status {
+            Ok(s) if s.success() => Ok(()),
+            _ => Err("Could not open the .rdp file. Install \"Windows App\" from the App Store.".into()),
+        }
+    }
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+mod platform {
+    use super::*;
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
+    /// FreeRDP binaries to try, newest first.
+    const CANDIDATES: &[&str] = &["xfreerdp3", "sdl-freerdp3", "xfreerdp", "sdl-freerdp"];
+
+    fn find_freerdp() -> Option<(&'static str, bool)> {
+        for name in CANDIDATES {
+            if let Ok(out) = Command::new(name).arg("--version").stderr(Stdio::null()).output() {
+                let text = String::from_utf8_lossy(&out.stdout);
+                let v3 = name.ends_with('3') || text.contains("version 3");
+                return Some((name, v3));
+            }
+        }
+        None
+    }
+
+    pub fn launch(c: &Connection) -> Result<(), String> {
+        let (bin, v3) = find_freerdp().ok_or("FreeRDP not found. Install it, e.g. `sudo apt install freerdp3-x11`.")?;
+        let mut args = vec![format!("/v:{}", c.address())];
+        if !c.username.trim().is_empty() {
+            args.push(format!("/u:{}", c.username.trim()));
+        }
+        if !c.domain.trim().is_empty() {
+            args.push(format!("/d:{}", c.domain.trim()));
+        }
+        if c.fullscreen {
+            args.push("/f".into());
+        } else {
+            args.push(format!("/size:{}x{}", c.width, c.height));
+        }
+        if c.multimon {
+            args.push("/multimon".into());
+        }
+        if c.redirect_clipboard {
+            args.push("+clipboard".into());
+        }
+        if c.redirect_drives {
+            args.push("+home-drive".into());
+        }
+        if c.admin_session {
+            args.push("/admin".into());
+        }
+        if !c.gateway.trim().is_empty() {
+            args.push(if v3 { format!("/gateway:g:{}", c.gateway.trim()) } else { format!("/g:{}", c.gateway.trim()) });
+        }
+        args.push(if v3 { "/cert:tofu".into() } else { "/cert-tofu".into() });
+        args.push(format!("/t:{}", c.display_name()));
+        let send_pw = !c.password.is_empty();
+        if send_pw {
+            args.push("/from-stdin".into());
+        }
+
+        let mut child = Command::new(bin)
+            .args(&args)
+            .stdin(if send_pw { Stdio::piped() } else { Stdio::null() })
+            .spawn()
+            .map_err(|e| format!("Could not start {bin}: {e}"))?;
+        if send_pw {
+            if let Some(mut stdin) = child.stdin.take() {
+                let mut line = format!("{}\n", c.password.as_str());
+                let _ = stdin.write_all(line.as_bytes());
+                zeroize::Zeroize::zeroize(&mut line);
+            }
+        }
+        // Reap the child in the background so it doesn't linger as a zombie.
+        std::thread::spawn(move || {
+            let _ = child.wait();
+        });
+        Ok(())
+    }
 }
 
 #[cfg(windows)]

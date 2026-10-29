@@ -42,6 +42,13 @@ component LockScreen inherits Rectangle {
     in property <string> error;
     in property <string> vault-path;
     callback submit(string, string);
+    property <string> confirm;
+
+    function do-submit() {
+        root.submit(pw.text, root.confirm);
+        pw.text = "";
+        root.confirm = "";
+    }
 
     VerticalLayout {
         alignment: center;
@@ -59,18 +66,18 @@ component LockScreen inherits Rectangle {
                 pw := LineEdit {
                     input-type: password;
                     placeholder-text: "Master password";
-                    accepted => { root.submit(pw.text, pw2.text); pw.text = ""; pw2.text = ""; }
+                    accepted => { root.do-submit(); }
                 }
-                pw2 := LineEdit {
-                    visible: root.creating;
+                if root.creating: LineEdit {
                     input-type: password;
                     placeholder-text: "Repeat password";
-                    accepted => { root.submit(pw.text, pw2.text); pw.text = ""; pw2.text = ""; }
+                    text <=> root.confirm;
+                    accepted => { root.do-submit(); }
                 }
                 Button {
                     text: root.creating ? "Create vault" : "Unlock";
                     primary: true;
-                    clicked => { root.submit(pw.text, pw2.text); pw.text = ""; pw2.text = ""; }
+                    clicked => { root.do-submit(); }
                 }
                 Text { text: root.error; color: #ff7070; horizontal-alignment: center; height: 20px; }
                 Text { text: root.vault-path; font-size: 11px; color: Palette.foreground.with-alpha(0.5); horizontal-alignment: center; wrap: word-wrap; }
@@ -83,7 +90,7 @@ component LockScreen inherits Rectangle {
 export component MainWindow inherits Window {
     title: "RDS-center";
     preferred-width: 1000px;
-    preferred-height: 640px;
+    preferred-height: 720px;
     min-width: 720px;
     min-height: 440px;
 
@@ -193,48 +200,63 @@ export component MainWindow inherits Window {
                 vertical-alignment: center;
                 color: Palette.foreground.with-alpha(0.5);
             }
-            if root.has-draft: ScrollView {
+            if root.has-draft: VerticalLayout {
                 horizontal-stretch: 1;
-                VerticalBox {
-                    alignment: start;
-                    spacing: 8px;
-                    Text { text: root.draft.name == "" ? root.draft.host : root.draft.name; font-size: 20px; }
-                    Field { label: "Name"; LineEdit { text <=> root.draft.name; } }
-                    Field { label: "Folder"; LineEdit { text <=> root.draft.group; placeholder-text: "e.g. Work/Servers"; } }
-                    Field { label: "Host"; LineEdit { text <=> root.draft.host; } }
-                    Field { label: "Port"; SpinBox { minimum: 1; maximum: 65535; value <=> root.draft.port; } }
-                    Field { label: "Username"; LineEdit { text <=> root.draft.username; } }
-                    Field { label: "Domain"; LineEdit { text <=> root.draft.domain; } }
-                    Field {
-                        label: "Password";
-                        LineEdit { text <=> root.draft.password; input-type: root.show-password ? text : password; }
-                        Button { text: root.show-password ? "Hide" : "Show"; clicked => { root.show-password = !root.show-password; } }
+                // Title and actions stay visible; only the form scrolls.
+                HorizontalBox {
+                    Text {
+                        text: root.draft.name == "" ? root.draft.host : root.draft.name;
+                        font-size: 20px;
+                        vertical-alignment: center;
+                        overflow: elide;
+                        horizontal-stretch: 1;
                     }
-                    Field { label: "RD Gateway"; LineEdit { text <=> root.draft.gateway; } }
-                    Field {
-                        label: "Screen";
-                        CheckBox { text: "Full screen"; checked <=> root.draft.fullscreen; }
-                        SpinBox { enabled: !root.draft.fullscreen; minimum: 640; maximum: 7680; value <=> root.draft.width; }
-                        SpinBox { enabled: !root.draft.fullscreen; minimum: 480; maximum: 4320; value <=> root.draft.height; }
-                    }
-                    Field {
-                        label: "Options";
-                        VerticalLayout {
-                            CheckBox { text: "Use all monitors"; checked <=> root.draft.multimon; }
-                            CheckBox { text: "Share clipboard"; checked <=> root.draft.redirect-clipboard; }
-                            CheckBox { text: "Share local drives"; checked <=> root.draft.redirect-drives; }
-                            CheckBox { text: "Admin / console session"; checked <=> root.draft.admin-session; }
-                        }
-                    }
-                    Field { label: "Notes"; TextEdit { text <=> root.draft.notes; height: 70px; } }
+                    Button { text: "Connect"; primary: true; clicked => { root.connect(); } }
+                    Button { text: "Save"; clicked => { root.save(); } }
+                    if !root.confirm-delete: Button { text: "Delete"; clicked => { root.confirm-delete = true; } }
+                    if root.confirm-delete: Button { text: "Really delete?"; clicked => { root.delete(); } }
+                    if root.confirm-delete: Button { text: "Cancel"; clicked => { root.confirm-delete = false; } }
+                }
+                ScrollView {
+                    vertical-stretch: 1;
                     HorizontalLayout {
-                        spacing: 8px;
                         alignment: start;
-                        Button { text: "Connect"; primary: true; clicked => { root.connect(); } }
-                        Button { text: "Save"; clicked => { root.save(); } }
-                        if !root.confirm-delete: Button { text: "Delete"; clicked => { root.confirm-delete = true; } }
-                        if root.confirm-delete: Button { text: "Really delete?"; clicked => { root.delete(); } }
-                        if root.confirm-delete: Button { text: "Cancel"; clicked => { root.confirm-delete = false; } }
+                        VerticalBox {
+                            alignment: start;
+                            spacing: 8px;
+                            width: min(640px, root.width - 310px);
+                            Field { label: "Name"; LineEdit { text <=> root.draft.name; } }
+                            Field { label: "Folder"; LineEdit { text <=> root.draft.group; placeholder-text: "e.g. Work/Servers"; } }
+                            Field { label: "Host"; LineEdit { text <=> root.draft.host; } }
+                            Field { label: "Port"; SpinBox { width: 140px; minimum: 1; maximum: 65535; value <=> root.draft.port; } Rectangle {} }
+                            Field { label: "Username"; LineEdit { text <=> root.draft.username; } }
+                            Field { label: "Domain"; LineEdit { text <=> root.draft.domain; } }
+                            Field {
+                                label: "Password";
+                                LineEdit { text <=> root.draft.password; input-type: root.show-password ? text : password; }
+                                Button { text: root.show-password ? "Hide" : "Show"; clicked => { root.show-password = !root.show-password; } }
+                            }
+                            Field { label: "RD Gateway"; LineEdit { text <=> root.draft.gateway; } }
+                            Field {
+                                label: "Screen";
+                                CheckBox { text: "Full screen"; checked <=> root.draft.fullscreen; }
+                                SpinBox { width: 120px; enabled: !root.draft.fullscreen; minimum: 640; maximum: 7680; value <=> root.draft.width; }
+                                Text { text: "x"; vertical-alignment: center; }
+                                SpinBox { width: 120px; enabled: !root.draft.fullscreen; minimum: 480; maximum: 4320; value <=> root.draft.height; }
+                                Rectangle {}
+                            }
+                            Field {
+                                label: "Options";
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    CheckBox { text: "Use all monitors"; checked <=> root.draft.multimon; }
+                                    CheckBox { text: "Share clipboard"; checked <=> root.draft.redirect-clipboard; }
+                                    CheckBox { text: "Share local drives"; checked <=> root.draft.redirect-drives; }
+                                    CheckBox { text: "Admin / console session"; checked <=> root.draft.admin-session; }
+                                }
+                            }
+                            Field { label: "Notes"; TextEdit { text <=> root.draft.notes; height: 80px; } }
+                        }
                     }
                 }
             }

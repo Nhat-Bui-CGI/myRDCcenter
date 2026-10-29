@@ -1,0 +1,83 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release --workspace
+      - name: Package
+        shell: bash
+        run: |
+          mkdir dist
+          cp target/release/RDS-center-egui.exe dist/RDS-center-egui-windows-x64.exe
+          cp target/release/RDS-center-slint.exe dist/RDS-center-slint-windows-x64.exe
+      - uses: actions/upload-artifact@v4
+        with: { name: windows, path: dist/* }
+
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: sudo apt-get update && sudo apt-get install -y libwayland-dev libxkbcommon-dev libfontconfig1-dev libgl1-mesa-dev libx11-dev libxcursor-dev libxrandr-dev libxi-dev
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release --workspace
+      - name: Package
+        run: |
+          mkdir -p dist pkg/RDS-center
+          cp target/release/RDS-center-egui target/release/RDS-center-slint README.md pkg/RDS-center/
+          tar -C pkg -czf dist/RDS-center-linux-x64.tar.gz RDS-center
+      - uses: actions/upload-artifact@v4
+        with: { name: linux, path: dist/* }
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: "aarch64-apple-darwin,x86_64-apple-darwin" }
+      - uses: Swatinem/rust-cache@v2
+      - run: |
+          cargo build --release --workspace --target aarch64-apple-darwin
+          cargo build --release --workspace --target x86_64-apple-darwin
+      - name: Package universal .app in .dmg
+        run: |
+          mkdir dist
+          VERSION=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+          for app in egui slint; do
+            BIN=RDS-center-$app
+            APP="dist/$app/RDS-center ($app).app"
+            mkdir -p "$APP/Contents/MacOS"
+            lipo -create -output "$APP/Contents/MacOS/$BIN" \
+              target/aarch64-apple-darwin/release/$BIN target/x86_64-apple-darwin/release/$BIN
+            sed -e "s/@BIN@/$BIN/g" -e "s/@NAME@/RDS-center ($app)/g" -e "s/@VERSION@/$VERSION/g" \
+              packaging/macos/Info.plist > "$APP/Contents/Info.plist"
+            codesign --force --deep --sign - "$APP"
+            ln -s /Applications "dist/$app/Applications"
+            hdiutil create -volname "RDS-center ($app)" -srcfolder "dist/$app" -ov -format UDZO "dist/RDS-center-$app-macos.dmg"
+          done
+      - uses: actions/upload-artifact@v4
+        with: { name: macos, path: dist/*.dmg }
+
+  release:
+    needs: [windows, linux, macos]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: dist, merge-multiple: true }
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
