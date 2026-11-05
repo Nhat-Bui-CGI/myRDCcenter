@@ -118,6 +118,17 @@ The app does not import passwords from `.rdp` and `.rdm` files. Type them again.
 
 The file includes the passwords. It is encrypted with the password that you typed. Select **Move** to remove the connections from this computer after the export.
 
+## Change the text size
+
+The app follows the display scale of Windows or macOS on each screen. To make all text and buttons larger or smaller:
+
+- Click **A+** or **A-** in the toolbar.
+- Or press **Ctrl +** or **Ctrl -** (**Cmd** on macOS).
+
+To go back to 100 %, click the percentage between the buttons, or press **Ctrl 0**.
+
+The app keeps the text size on this computer. It does not go into the vault or into exports.
+
 ## Keep your vault safe
 
 - **Backup** saves an encrypted copy of the vault. Do this regularly.

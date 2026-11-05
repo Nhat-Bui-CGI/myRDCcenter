@@ -272,6 +272,9 @@ export component MainWindow inherits Window {
     callback connect();
     callback delete();
     callback lock();
+    // Text size: +1 larger, -1 smaller, 0 back to 100 %. Ctrl +/-/0 do the same.
+    in property <string> text-size-label: "100 %";
+    callback text-size(int);
     callback auto-lock-changed(int);
     callback change-password(string, string);
     callback click-group(string);
@@ -341,6 +344,9 @@ export component MainWindow inherits Window {
                     edited(v) => { root.auto-lock-changed(v); }
                 }
                 Rectangle { horizontal-stretch: 1; }
+                Button { text: "A-"; clicked => { root.text-size(-1); } }
+                Button { text: root.text-size-label; clicked => { root.text-size(0); } }
+                Button { text: "A+"; clicked => { root.text-size(1); } }
                 ColorButton { text: "Lock"; tone: Theme.danger; outline: true; clicked => { root.lock(); } }
             }
         }

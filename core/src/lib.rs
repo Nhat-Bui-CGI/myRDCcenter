@@ -8,6 +8,7 @@ pub mod import;
 pub mod import_rdm;
 pub mod keystore;
 pub mod model;
+pub mod prefs;
 pub mod rdp;
 #[cfg(feature = "screenshot")]
 pub mod screenshot;

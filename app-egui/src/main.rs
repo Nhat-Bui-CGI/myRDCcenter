@@ -14,6 +14,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use eframe::egui::{self, Color32, RichText};
+use myrdc_core::prefs::{Prefs, TextSizeKey};
 use myrdc_core::theme::{self, Rgb};
 use myrdc_core::{default_vault_path, export, groups, import, keystore, rdp, Connection, TreeRow, Vault};
 use uuid::Uuid;
@@ -135,6 +136,8 @@ struct App {
     vault_path: PathBuf,
     screen: Screen,
     last_activity: Instant,
+    /// Settings of this computer (text size).
+    prefs: Prefs,
     /// Frames drawn so far; a screenshot waits a few frames for the layout to settle.
     #[cfg(feature = "screenshot")]
     frames: u32,
@@ -157,6 +160,10 @@ impl App {
             style.animation_time = 0.0;
             apply_theme(style);
         });
+        // Our own Ctrl +/-/0 handling, with the same steps as the Slint app.
+        cc.egui_ctx.options_mut(|o| o.zoom_with_keyboard = false);
+        let prefs = Prefs::load();
+        cc.egui_ctx.set_zoom_factor(prefs.zoom());
         let vault_path = default_vault_path();
         // Open straight away when the key is remembered on this computer.
         let screen = match Vault::open_remembered(&vault_path) {
@@ -167,6 +174,7 @@ impl App {
             vault_path,
             screen,
             last_activity: Instant::now(),
+            prefs,
             #[cfg(feature = "screenshot")]
             frames: 0,
         }
@@ -204,12 +212,21 @@ impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         self.auto_lock_check(&ctx);
+        let mut text_size = text_size_shortcut(&ctx);
 
         let mut lock_now = false;
         let mut unlocked = None;
         match &mut self.screen {
             Screen::Locked(lock) => unlocked = lock_ui(ui, lock, &self.vault_path),
-            Screen::Open(open) => lock_now = open.ui(ui),
+            Screen::Open(open) => {
+                let label = self.prefs.text_size_label();
+                lock_now = open.ui(ui, &label, &mut text_size);
+            }
+        }
+        if let Some(key) = text_size {
+            if key.apply(&mut self.prefs) {
+                ctx.set_zoom_factor(self.prefs.zoom());
+            }
         }
         if let Some(vault) = unlocked {
             self.last_activity = Instant::now();
@@ -221,6 +238,22 @@ impl eframe::App for App {
         #[cfg(feature = "screenshot")]
         self.screenshot_step(&ctx);
     }
+}
+
+/// Ctrl (Cmd on macOS) with + / = / - / 0 changes the text size.
+fn text_size_shortcut(ctx: &egui::Context) -> Option<TextSizeKey> {
+    let cmd = egui::Modifiers::COMMAND;
+    ctx.input_mut(|i| {
+        if i.consume_key(cmd, egui::Key::Plus) || i.consume_key(cmd, egui::Key::Equals) {
+            Some(TextSizeKey::Larger)
+        } else if i.consume_key(cmd, egui::Key::Minus) {
+            Some(TextSizeKey::Smaller)
+        } else if i.consume_key(cmd, egui::Key::Num0) {
+            Some(TextSizeKey::Reset)
+        } else {
+            None
+        }
+    })
 }
 
 #[cfg(feature = "screenshot")]
@@ -394,7 +427,8 @@ impl OpenVault {
     }
 
     /// Returns true when the user asked to lock.
-    fn ui(&mut self, ui: &mut egui::Ui) -> bool {
+    /// `text_size_label` is shown in the toolbar; a click on its buttons sets `text_size`.
+    fn ui(&mut self, ui: &mut egui::Ui, text_size_label: &str, text_size: &mut Option<TextSizeKey>) -> bool {
         let mut lock = false;
 
         let bar = egui::Frame::new().fill(col(theme::PANEL)).inner_margin(egui::Margin::symmetric(10, 8));
@@ -447,6 +481,16 @@ impl OpenVault {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.add(outline_button("Lock", theme::DANGER)).clicked() {
                         lock = true;
+                    }
+                    ui.separator();
+                    if ui.small_button("A+").on_hover_text("Larger text (Ctrl +)").clicked() {
+                        *text_size = Some(TextSizeKey::Larger);
+                    }
+                    if ui.small_button(text_size_label).on_hover_text("Text size. Click for 100 % (Ctrl 0)").clicked() {
+                        *text_size = Some(TextSizeKey::Reset);
+                    }
+                    if ui.small_button("A-").on_hover_text("Smaller text (Ctrl -)").clicked() {
+                        *text_size = Some(TextSizeKey::Smaller);
                     }
                 });
             });

@@ -1,11 +1,12 @@
 // myRDCcenter, Slint front-end.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
+use myrdc_core::prefs::{Prefs, TextSizeKey};
 use myrdc_core::theme;
 use myrdc_core::{default_vault_path, export, groups, idle, import, keystore, rdp, Connection, Secret, TreeRow, Vault};
 use slint::{ComponentHandle, ModelRc, SharedString, Timer, TimerMode, VecModel};
@@ -38,6 +39,7 @@ fn main() -> Result<(), slint::PlatformError> {
     });
     ui.on_status_color(|s| to_color(theme::status_color(&s)));
     ui.set_version(env!("CARGO_PKG_VERSION").into());
+    text_size_setup(&ui);
     let path = default_vault_path();
     ui.set_vault_path(path.display().to_string().into());
     ui.set_creating(!Vault::exists(&path));
@@ -544,6 +546,99 @@ fn main() -> Result<(), slint::PlatformError> {
     });
 
     ui.run()
+}
+
+/// Text size: the whole UI is drawn at (display scale x text size).
+///
+/// Slint has no zoom of its own, so the app sets the window scale factor itself.
+/// A winit event filter keeps it right when the window moves to a screen with
+/// another display scale, and handles Ctrl +/-/0.
+fn text_size_setup(ui: &MainWindow) {
+    use slint::winit_030::winit::event::{ElementState, WindowEvent};
+    use slint::winit_030::winit::keyboard::{Key, KeyCode, ModifiersState, PhysicalKey};
+    use slint::winit_030::{EventResult, WinitWindowAccessor};
+
+    let prefs = Rc::new(RefCell::new(Prefs::load()));
+    ui.set_text_size_label(prefs.borrow().text_size_label().into());
+
+    let change = {
+        let (ui_w, prefs) = (ui.as_weak(), prefs.clone());
+        move |key: TextSizeKey| {
+            let Some(ui) = ui_w.upgrade() else { return };
+            let mut p = prefs.borrow_mut();
+            if key.apply(&mut p) {
+                ui.set_text_size_label(p.text_size_label().into());
+                if let Some(native) = ui.window().with_winit_window(|w| w.scale_factor() as f32) {
+                    set_scale(ui.window(), native * p.zoom());
+                }
+            }
+        }
+    };
+    ui.on_text_size({
+        let change = change.clone();
+        move |dir| {
+            change(match dir {
+                d if d > 0 => TextSizeKey::Larger,
+                d if d < 0 => TextSizeKey::Smaller,
+                _ => TextSizeKey::Reset,
+            })
+        }
+    });
+
+    let modifiers = Cell::new(ModifiersState::empty());
+    let applied = Cell::new(false);
+    ui.window().on_winit_window_event(move |window, event| {
+        // The first event comes after Slint has set the display scale: add the text size.
+        if !applied.replace(true) && prefs.borrow().text_size != myrdc_core::prefs::DEFAULT_TEXT_SIZE {
+            if let Some(native) = window.with_winit_window(|w| w.scale_factor() as f32) {
+                set_scale(window, native * prefs.borrow().zoom());
+            }
+        }
+        match event {
+            // Another display scale (window moved to another screen, or Windows setting changed).
+            WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+                set_scale(window, *scale_factor as f32 * prefs.borrow().zoom());
+                EventResult::PreventDefault
+            }
+            WindowEvent::ModifiersChanged(m) => {
+                modifiers.set(m.state());
+                EventResult::Propagate
+            }
+            WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
+                let m = modifiers.get();
+                let cmd = if cfg!(target_os = "macos") { m.super_key() } else { m.control_key() };
+                if !cmd {
+                    return EventResult::Propagate;
+                }
+                let by_char = match &event.logical_key {
+                    Key::Character(c) => TextSizeKey::from_text(c.as_str()),
+                    _ => None,
+                };
+                let key = by_char.or(match event.physical_key {
+                    PhysicalKey::Code(KeyCode::NumpadAdd) => Some(TextSizeKey::Larger),
+                    PhysicalKey::Code(KeyCode::NumpadSubtract) => Some(TextSizeKey::Smaller),
+                    PhysicalKey::Code(KeyCode::Numpad0) => Some(TextSizeKey::Reset),
+                    _ => None,
+                });
+                match key {
+                    Some(k) => {
+                        change(k);
+                        EventResult::PreventDefault
+                    }
+                    None => EventResult::Propagate,
+                }
+            }
+            _ => EventResult::Propagate,
+        }
+    });
+}
+
+/// Draw the window at `scale` (physical pixels per logical pixel), same window size.
+fn set_scale(window: &slint::Window, scale: f32) {
+    use slint::platform::WindowEvent;
+    window.dispatch_event(WindowEvent::ScaleFactorChanged { scale_factor: scale });
+    let size = window.size().to_logical(scale);
+    window.dispatch_event(WindowEvent::Resized { size });
 }
 
 const ALL_CONNECTIONS: &str = "All connections";

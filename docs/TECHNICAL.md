@@ -53,6 +53,15 @@ To use a different vault file, set the environment variable `MYRDCCENTER_VAULT` 
 
 A vault from the old name "RDS-center" moves to the new location automatically.
 
+## Text size
+
+The text size (70 % to 250 %) is in `prefs.json` in the app data folder, for example `%LOCALAPPDATA%\myRDCcenter\prefs.json`. The file is not encrypted and is not in exports. To use a different file, set `MYRDCCENTER_PREFS` to its path.
+
+The text size multiplies the display scale of the screen. A window on a 150 % screen with a text size of 125 % is drawn at 187.5 %.
+
+- egui: `Context::set_zoom_factor`. The built-in egui zoom keys are off, so both apps use the same steps.
+- Slint: Slint has no zoom, so the app sets the scale factor of the window itself. A winit event filter (`unstable-winit-030`) adds the text size when the window moves to a screen with another scale. The filter also handles Ctrl +, Ctrl - and Ctrl 0.
+
 ## Security
 
 - The key comes from the master password with Argon2id (64 MiB, 3 passes).
@@ -124,7 +133,7 @@ The screenshots in `docs/` use a demo vault, not real data.
    | `MYRDCCENTER_SELECT` | `SQL server` |
    | `MYRDCCENTER_SCREENSHOT` | `docs\screenshot-egui.png` or `docs\screenshot-slint.png` |
 
-The app opens the demo vault, selects the connection, saves the PNG file and stops. Release builds do not include the `screenshot` feature.
+The app opens the demo vault, selects the connection, saves the PNG file and stops. Screenshots ignore your text size and use 100 %, unless you set `MYRDCCENTER_PREFS`. Release builds do not include the `screenshot` feature.
 
 ## egui flicker
 
