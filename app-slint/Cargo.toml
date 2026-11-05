@@ -10,7 +10,9 @@ path = "src/main.rs"
 
 [dependencies]
 myrdc-core = { path = "../core" }
-slint = "1.18"
+# femtovg on wgpu draws with Direct3D 12 / Vulkan / Metal. It resizes smoothly;
+# the default OpenGL renderer (femtovg) stutters while the window is resized.
+slint = { version = "1.18", features = ["renderer-femtovg-wgpu"] }
 rfd = "0.17"
 uuid = "1"
 
