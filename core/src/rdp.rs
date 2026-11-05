@@ -9,8 +9,31 @@ use crate::model::Connection;
 #[cfg(any(windows, target_os = "macos"))]
 const CLEANUP_AFTER: std::time::Duration = std::time::Duration::from_secs(60);
 
+/// Size and scale of the local screen that a full-screen session should match.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Display {
+    /// Physical pixels.
+    pub width: u32,
+    pub height: u32,
+    /// Windows display scale in percent (100, 125, 150, ...).
+    pub scale: u32,
+}
+
+/// Scale factors that mstsc accepts for `desktopscalefactor`.
+const SCALES: &[u32] = &[100, 125, 150, 175, 200, 250, 300, 400, 500];
+
+fn nearest_scale(percent: u32) -> u32 {
+    *SCALES.iter().min_by_key(|s| s.abs_diff(percent)).unwrap()
+}
+
 /// Text of an .rdp file for this connection (no password inside).
+/// In full screen it uses the size and scale of the primary monitor.
 pub fn build_rdp_file(c: &Connection) -> String {
+    build_rdp_file_for(c, primary_display())
+}
+
+/// Text of an .rdp file, with the screen to match in full screen given explicitly.
+pub fn build_rdp_file_for(c: &Connection, display: Option<Display>) -> String {
     let mut lines = vec![
         format!("full address:s:{}", c.address()),
         format!("username:s:{}", c.full_username()),
@@ -26,7 +49,16 @@ pub fn build_rdp_file(c: &Connection) -> String {
     if !c.fullscreen {
         lines.push(format!("desktopwidth:i:{}", c.width));
         lines.push(format!("desktopheight:i:{}", c.height));
+    } else if let Some(d) = display.filter(|_| !c.multimon) {
+        // Without these, mstsc falls back to the size saved in Default.rdp and
+        // runs the remote desktop at 100 % scale, which looks tiny on high-DPI screens.
+        lines.push(format!("desktopwidth:i:{}", d.width));
+        lines.push(format!("desktopheight:i:{}", d.height));
+        lines.push(format!("desktopscalefactor:i:{}", nearest_scale(d.scale)));
+        lines.push("devicescalefactor:i:100".into());
     }
+    // Let the remote session follow the window size (and the local scale) when it changes.
+    lines.push("dynamic resolution:i:1".into());
     if !c.gateway.trim().is_empty() {
         lines.push(format!("gatewayhostname:s:{}", c.gateway.trim()));
         lines.push("gatewayusagemethod:i:1".into());
@@ -245,6 +277,37 @@ mod platform {
     }
 }
 
+/// Size and scale of the primary monitor (Windows only; elsewhere the client decides).
+#[cfg(windows)]
+pub fn primary_display() -> Option<Display> {
+    use windows_sys::Win32::Foundation::POINT;
+    use windows_sys::Win32::Graphics::Gdi::{
+        EnumDisplaySettingsW, MonitorFromPoint, DEVMODEW, ENUM_CURRENT_SETTINGS, MONITOR_DEFAULTTOPRIMARY,
+    };
+    use windows_sys::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
+
+    let mut mode: DEVMODEW = unsafe { std::mem::zeroed() };
+    mode.dmSize = std::mem::size_of::<DEVMODEW>() as u16;
+    // Null device name = the primary display; returns physical pixels whatever our DPI awareness.
+    if unsafe { EnumDisplaySettingsW(std::ptr::null(), ENUM_CURRENT_SETTINGS, &mut mode) } == 0 {
+        return None;
+    }
+    let (width, height) = (mode.dmPelsWidth, mode.dmPelsHeight);
+    if width == 0 || height == 0 {
+        return None;
+    }
+    let monitor = unsafe { MonitorFromPoint(POINT { x: 0, y: 0 }, MONITOR_DEFAULTTOPRIMARY) };
+    let (mut dpi_x, mut dpi_y) = (96u32, 96u32);
+    let ok = unsafe { GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &mut dpi_x, &mut dpi_y) } == 0;
+    let scale = if ok && dpi_x > 0 { dpi_x * 100 / 96 } else { 100 };
+    Some(Display { width, height, scale })
+}
+
+#[cfg(not(windows))]
+pub fn primary_display() -> Option<Display> {
+    None
+}
+
 #[cfg(windows)]
 mod win_cred {
     use windows_sys::Win32::Security::Credentials::{
@@ -307,6 +370,23 @@ mod tests {
         assert!(!back.fullscreen);
         assert_eq!(back.width, 1600);
         assert_eq!(back.gateway, "gw.example.com");
+    }
+
+    #[test]
+    fn fullscreen_matches_display() {
+        let c = Connection::new("Srv", "");
+        assert!(c.fullscreen);
+        let text = build_rdp_file_for(&c, Some(Display { width: 3840, height: 2400, scale: 144 }));
+        assert!(text.contains("screen mode id:i:2"));
+        assert!(text.contains("desktopwidth:i:3840"));
+        assert!(text.contains("desktopheight:i:2400"));
+        assert!(text.contains("desktopscalefactor:i:150"));
+        assert!(text.contains("dynamic resolution:i:1"));
+
+        let mut multi = c.clone();
+        multi.multimon = true;
+        let text = build_rdp_file_for(&multi, Some(Display { width: 3840, height: 2400, scale: 150 }));
+        assert!(!text.contains("desktopwidth"));
     }
 
     #[test]
