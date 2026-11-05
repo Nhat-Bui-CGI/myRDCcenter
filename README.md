@@ -2,86 +2,153 @@
 
 # myRDCcenter
 
-An offline Remote Desktop (RDP) connection manager in Rust. It runs on Windows, Linux and macOS.
+myRDCcenter keeps your Remote Desktop connections in one place and starts them with one click. It runs on Windows, Linux and macOS.
 
-All your connections are kept in one encrypted file on your own computer. It has no account, no cloud and no sync.
+Your connections stay on your computer, in one encrypted file. The app has no account and no cloud.
 
-There are two front-ends. They share the same core and the same vault file, so you can use either one:
+## Two versions, one vault
 
-| App | Folder | UI toolkit |
-|---|---|---|
-| `myRDCcenter-egui` | `app-egui` | egui / eframe (glow) |
-| `myRDCcenter-slint` | `app-slint` | Slint (Fluent style) |
+There are two versions of the app. They have the same functions and use the same vault file, so you can use either one.
+
+**myRDCcenter-egui**
+
+![The egui version of myRDCcenter, with the connection "SQL server" selected](docs/screenshot-egui.png)
+
+**myRDCcenter-slint**
+
+![The Slint version of myRDCcenter, with the connection "SQL server" selected](docs/screenshot-slint.png)
 
 ## Download
 
-Go to [Releases](../../releases):
+Go to [Releases](../../releases) and download the file for your computer.
 
-- **Windows:** `myRDCcenter-egui-windows-x64.zip` or `myRDCcenter-slint-windows-x64.zip`. Each zip holds a single `.exe`. It only needs DLLs that ship with Windows, because the C runtime is linked statically.
-- **Linux:** `myRDCcenter-linux-x64.tar.gz`. It contains both apps, an icon and `.desktop` files. To add the apps to your menu, copy the `.desktop` files to `~/.local/share/applications/` and `myRDCcenter.png` to `~/.local/share/icons/`. The apps must be on your `PATH`.
-- **macOS:** `myRDCcenter-egui-macos.dmg` or `myRDCcenter-slint-macos.dmg`. These are universal builds for Apple Silicon and Intel. The app has no Apple developer signature. The first time you start it, right-click it and choose **Open**.
+| Computer | File |
+|---|---|
+| Windows | `myRDCcenter-egui-windows-x64.zip` or `myRDCcenter-slint-windows-x64.zip` |
+| Linux | `myRDCcenter-linux-x64.tar.gz` (both versions) |
+| macOS | `myRDCcenter-egui-macos.dmg` or `myRDCcenter-slint-macos.dmg` |
 
-## Features
+### Windows
 
-- Groups and subgroups in a collapsible tree (for example `Work` > `Servers`), with search
-  - **New group** creates a group inside the selected group
-  - Click a group to select it. Click it again to fold it. Groups can be renamed, moved (type `Parent/Name`) and deleted. Deleting a group keeps its connections and moves them up one level.
-  - Pick a connection's group in its **Group** field. In the egui app, you can also right-click a connection and choose **Move to group**.
-- Host, port, user, domain, password, RD Gateway, screen size, all monitors, clipboard/drive sharing, admin session, notes
-- Double-click a connection, or click **Connect**, to start the session
-- **Import** existing `.rdp` files, `.rdcx` exports, or `.rdm` export files with all their folders
-  - RDP entries, folders and usernames are imported. Other entry types (SSH, web, ...) are skipped.
-  - Passwords in `.rdm` files are encrypted by the program that made them, so they are not imported. Type them in again.
-  - Importing the same file twice does not create duplicates.
-- **Export** to move connections to another PC: all of them or one group, to an encrypted `.rdcx` file with its own password (passwords included). Choose *Move* to remove them from this PC after export. Open the file on the other PC with **Import**.
-- Encrypted backup, change master password, auto-lock after idle time
-- **Remember on this computer** (Windows and macOS): tick it once, and the app opens without the master password. The key is protected by your computer login, using Windows DPAPI or the macOS Keychain. Anyone who can sign in to your computer as you can then open the vault. Untick it to ask for the password again. After auto-lock, click **Unlock with my computer login**.
+1. Extract the `.zip` file.
+2. Double-click the `.exe` file.
 
-## How Connect works
+### macOS
 
-| OS | Client | Login |
-|---|---|---|
-| Windows | Built-in Remote Desktop (`mstsc`) | Automatic. The password is stored for 60 seconds as a session-only Windows credential (`TERMSRV/<host>`). |
-| macOS | **Windows App** (formerly Microsoft Remote Desktop) from the App Store | Windows App asks for the password. |
-| Linux | FreeRDP (`xfreerdp3`, `sdl-freerdp3` or `xfreerdp`), for example `sudo apt install freerdp3-x11` | Automatic. The password is sent on stdin, never on the command line. |
+1. Open the `.dmg` file and drag the app to `Applications`.
+2. The first time, right-click the app and click **Open**. The app has no Apple signature, so macOS asks before it starts.
+3. Install **Windows App** from the App Store. myRDCcenter uses it to connect.
 
-On Windows and macOS, the app writes a temporary `.rdp` file and deletes it again after 60 seconds.
+### Linux
 
-On Windows, **Full screen** uses the size and display scale (125 %, 150 %, ...) of your primary monitor, so text in the session is as large as on your own screen. The session also resizes when the window changes size.
+1. Extract the `.tar.gz` file.
+2. Install FreeRDP. For example, run `sudo apt install freerdp3-x11`.
+3. Start `myRDCcenter-egui` or `myRDCcenter-slint`.
 
-## Security
+To add the apps to your menu, copy the `.desktop` files to `~/.local/share/applications/`. Copy `myRDCcenter.png` to `~/.local/share/icons/`. The apps must be on your `PATH`.
 
-- The vault file is stored here:
-  - Windows: `%LOCALAPPDATA%\myRDCcenter\vault.rdsc`
-  - Linux: `~/.local/share/myRDCcenter/vault.rdsc`
-  - macOS: `~/Library/Application Support/myRDCcenter/vault.rdsc`
-- The key is derived from the master password with Argon2id (64 MiB, 3 passes). Data is encrypted with XChaCha20-Poly1305. The file header is authenticated too.
-- The vault is written to a temporary file first and then renamed, so a crash cannot leave a broken vault.
-- The master password cannot be recovered. Keep a backup and remember the password.
+## First start
 
-## Build
+1. Start the app.
+2. Type a master password two times. Use 8 or more characters.
+3. Click **Create vault**.
 
-Install Rust from https://rustup.rs, then run:
+The master password encrypts the vault. Nobody can recover it. Write it down in a safe place.
 
-```
-cargo build --release
-```
+## Add a connection
 
-The apps are in `target/release/`.
+1. Click **+ New connection**.
+2. Type a **Name** and the **Host** (the computer name or IP address).
+3. Type the **Username**, **Domain** and **Password**, if the remote computer needs them.
+4. Click **Save**.
 
-On Linux, you also need these packages: `libwayland-dev libxkbcommon-dev libfontconfig1-dev libgl1-mesa-dev libx11-dev libxcursor-dev libxrandr-dev libxi-dev`.
+The other fields are optional:
 
-Run the core tests with `cargo test -p myrdc-core`.
+| Field | Use |
+|---|---|
+| **Group** | Puts the connection in a group. |
+| **Port** | Change it only if the remote computer does not use 3389. |
+| **RD Gateway** | The gateway server, if your company uses one. |
+| **Screen** | **Full screen** fills your monitor. Clear it to set a window size. |
+| **Options** | Use all monitors, share the clipboard, share your drives, or start an admin session. |
+| **Notes** | Your own notes. |
 
-To make a release, push a tag such as `v0.1.0`, or run the **Release** workflow from the Actions tab and enter the tag name. GitHub Actions then builds all the files listed under Download.
+## Connect
 
-## egui flicker
+Double-click a connection in the list. You can also select it and click **Connect**.
 
-The egui app has settings to stop flicker:
+On Windows and Linux, the app logs in for you. On macOS, Windows App asks for the password.
 
-- glow renderer with vsync and no MSAA
-- no fade animations and no continuous repaint
-- fixed container ids, so changing the selection does not start a new layout pass
-- a clear colour that is the same as the panel colour
+## Groups
 
-See the comment at the top of `app-egui/src/main.rs`.
+Groups keep the list in order. Each top-level group has its own color. Its subgroups and connections use the same color.
+
+- To make a group, click **New group**. If a group is selected, the new group goes inside it.
+- To put a connection in a group, select the group in the **Group** field and click **Save**.
+- To fold or open a group, click the arrow. You can also click a selected group again.
+- To rename or move a group, select it and click **Rename / move**. Type `Parent/Name` to move it.
+- To delete a group, select it and click **Delete group**. Its connections do not go away. They move up one level.
+
+In the egui version, you can also right-click a connection and click **Move to group**.
+
+## Find a connection
+
+Type in the **Search** box. The list shows only the connections that match.
+
+## Import connections
+
+1. Click **Import**.
+2. Select one or more files. You can select these types:
+   - `.rdp` files from Remote Desktop
+   - `.rdm` export files, with their folders
+   - `.rdcx` export files from myRDCcenter
+3. For an `.rdcx` file, type the password of the file.
+
+If you import the same file again, the app does not make copies.
+
+The app does not import passwords from `.rdp` and `.rdm` files. Type them again.
+
+## Move connections to another computer
+
+1. Click **Export**.
+2. Select **All connections** or one group.
+3. Type a password for the file two times.
+4. Click **Export...** and save the `.rdcx` file.
+5. On the other computer, click **Import** and select the file.
+
+The file includes the passwords. It is encrypted with the password that you typed. Select **Move** to remove the connections from this computer after the export.
+
+## Keep your vault safe
+
+- **Backup** saves an encrypted copy of the vault. Do this regularly.
+- **Change password** changes the master password.
+- **Lock** closes the vault. The app asks for the master password again.
+- **Auto-lock (min)** locks the vault after some minutes with no activity. Set it to 0 to stop auto-lock.
+
+### Remember on this computer
+
+On Windows and macOS, you can open the vault without the master password.
+
+1. Select **Remember on this computer**.
+2. The next time, the app opens the vault with your computer login.
+
+Anybody who can log in to your computer as you can then open the vault. To stop this, clear **Remember on this computer**.
+
+After an auto-lock, click **Unlock with my computer login**.
+
+## Problems
+
+| Problem | What to do |
+|---|---|
+| You forgot the master password. | Nobody can open the vault without it. If you know the password of an older backup, copy the backup over the vault file. The [technical notes](docs/TECHNICAL.md#vault-file) show where the vault file is. |
+| The text in a full-screen session is too small. | Update to version 0.6.3 or later. |
+| On Linux, Connect shows "FreeRDP not found". | Install FreeRDP: `sudo apt install freerdp3-x11`. |
+| On macOS, Connect does not open a session. | Install **Windows App** from the App Store. |
+
+## More information
+
+For how the app works inside, how to build it and how to make a release, read [docs/TECHNICAL.md](docs/TECHNICAL.md).
+
+## License
+
+MIT. See [LICENSE](LICENSE).

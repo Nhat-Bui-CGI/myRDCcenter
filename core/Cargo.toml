@@ -14,6 +14,11 @@ uuid = { version = "1", features = ["v4", "serde"] }
 zeroize = { version = "1", features = ["derive"] }
 dirs = "5"
 roxmltree = "0.21"
+png = { version = "0.18", optional = true }
+
+[features]
+# Lets the apps save PNG screenshots of themselves, for the docs.
+screenshot = ["dep:png"]
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Security_Credentials", "Win32_System_SystemInformation", "Win32_UI_Input_KeyboardAndMouse", "Win32_Security_Cryptography", "Win32_Graphics_Gdi", "Win32_UI_HiDpi"] }

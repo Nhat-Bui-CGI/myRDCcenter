@@ -125,6 +125,8 @@ fn main() -> Result<(), slint::PlatformError> {
     if let Some(Ok(v)) = Vault::open_remembered(&startup_path) {
         enter_vault(&ui, &state, v);
     }
+    #[cfg(feature = "screenshot")]
+    let _shot_timer = screenshot(&ui, &state);
 
     ui.on_search_changed({
         let (ui_w, s, t) = (ui.as_weak(), state.clone(), touch.clone());
@@ -705,6 +707,36 @@ fn launch(ui: &MainWindow, c: &Connection) {
         Err(e) => e,
     };
     ui.set_status(msg.into());
+}
+
+/// Select the requested connection, then save a PNG of the window and quit.
+#[cfg(feature = "screenshot")]
+fn screenshot(ui: &MainWindow, s: &Shared) -> Option<Timer> {
+    let req = myrdc_core::screenshot::request()?;
+    let (w, h) = myrdc_core::screenshot::SIZE;
+    ui.window().set_size(slint::LogicalSize::new(w, h));
+    if let Some(name) = &req.select {
+        let id = s.borrow().vault.as_ref().and_then(|v| v.data.connections.iter().find(|c| &c.name == name).map(|c| c.id));
+        if let Some(id) = id {
+            select(ui, s, &id.to_string());
+        }
+    }
+    let ui_w = ui.as_weak();
+    let timer = Timer::default();
+    timer.start(TimerMode::SingleShot, std::time::Duration::from_millis(1500), move || {
+        let ui = ui_w.unwrap();
+        match ui.window().take_snapshot() {
+            Ok(buf) => {
+                let res = myrdc_core::screenshot::save_png(&req.out, buf.width(), buf.height(), buf.as_bytes());
+                if let Err(e) = res {
+                    eprintln!("Could not save screenshot: {e}");
+                }
+            }
+            Err(e) => eprintln!("Could not take screenshot: {e}"),
+        }
+        let _ = slint::quit_event_loop();
+    });
+    Some(timer)
 }
 
 fn refresh_list(ui: &MainWindow, s: &Shared) {

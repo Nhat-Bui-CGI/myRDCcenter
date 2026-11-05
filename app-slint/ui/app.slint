@@ -518,7 +518,7 @@ export component MainWindow inherits Window {
                             overflow: elide;
                         }
                     }
-                    ColorButton { y: (parent.height - self.height) / 2; text: "▶  Connect"; tone: Theme.connect; clicked => { root.connect(); } }
+                    ColorButton { y: (parent.height - self.height) / 2; text: "Connect"; tone: Theme.connect; clicked => { root.connect(); } }
                     ColorButton { y: (parent.height - self.height) / 2; text: "Save"; clicked => { root.save(); } }
                     if !root.confirm-delete: ColorButton { text: "Delete"; tone: Theme.danger; outline: true; clicked => { root.confirm-delete = true; } }
                     if root.confirm-delete: ColorButton { text: "Really delete?"; tone: Theme.danger; clicked => { root.delete(); } }

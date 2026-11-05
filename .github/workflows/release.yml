@@ -43,6 +43,7 @@ jobs:
         run: |
           mkdir -p dist pkg/myRDCcenter
           cp target/release/myRDCcenter-egui target/release/myRDCcenter-slint README.md pkg/myRDCcenter/
+          mkdir -p pkg/myRDCcenter/docs && cp docs/TECHNICAL.md docs/*.png pkg/myRDCcenter/docs/
           cp assets/icon-256.png pkg/myRDCcenter/myRDCcenter.png
           cp packaging/linux/*.desktop pkg/myRDCcenter/
           tar -C pkg -czf dist/myRDCcenter-linux-x64.tar.gz myRDCcenter

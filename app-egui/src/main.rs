@@ -25,7 +25,7 @@ fn main() -> eframe::Result {
     let mut options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title(concat!("myRDCcenter ", env!("CARGO_PKG_VERSION")))
-            .with_inner_size([1000.0, 640.0])
+            .with_inner_size(window_size())
             .with_min_inner_size([720.0, 440.0])
             .with_transparent(false)
             .with_icon(egui::IconData {
@@ -135,6 +135,18 @@ struct App {
     vault_path: PathBuf,
     screen: Screen,
     last_activity: Instant,
+    /// Frames drawn so far; a screenshot waits a few frames for the layout to settle.
+    #[cfg(feature = "screenshot")]
+    frames: u32,
+}
+
+fn window_size() -> [f32; 2] {
+    #[cfg(feature = "screenshot")]
+    if myrdc_core::screenshot::request().is_some() {
+        let (w, h) = myrdc_core::screenshot::SIZE;
+        return [w, h];
+    }
+    [1000.0, 640.0]
 }
 
 impl App {
@@ -151,7 +163,13 @@ impl App {
             Some(Ok(v)) => Screen::Open(Box::new(OpenVault::new(v))),
             _ => Screen::Locked(LockScreen::new(&vault_path)),
         };
-        Self { vault_path, screen, last_activity: Instant::now() }
+        Self {
+            vault_path,
+            screen,
+            last_activity: Instant::now(),
+            #[cfg(feature = "screenshot")]
+            frames: 0,
+        }
     }
 
     fn lock(&mut self) {
@@ -200,6 +218,35 @@ impl eframe::App for App {
         if lock_now {
             self.lock();
         }
+        #[cfg(feature = "screenshot")]
+        self.screenshot_step(&ctx);
+    }
+}
+
+#[cfg(feature = "screenshot")]
+impl App {
+    /// Select the requested connection, wait for the layout, then save a PNG and exit.
+    fn screenshot_step(&mut self, ctx: &egui::Context) {
+        let Some(req) = myrdc_core::screenshot::request() else { return };
+        self.frames += 1;
+        if self.frames == 1 {
+            if let (Screen::Open(open), Some(name)) = (&mut self.screen, &req.select) {
+                if let Some(id) = open.vault.data.connections.iter().find(|c| &c.name == name).map(|c| c.id) {
+                    open.select(id);
+                }
+            }
+        }
+        if self.frames == 6 {
+            ctx.request_screenshot(move |img| {
+                let rgba: Vec<u8> = img.pixels.iter().flat_map(|c| c.to_array()).collect();
+                let res = myrdc_core::screenshot::save_png(&req.out, img.size[0] as u32, img.size[1] as u32, &rgba);
+                if let Err(e) = res {
+                    eprintln!("Could not save screenshot: {e}");
+                }
+                std::process::exit(0);
+            });
+        }
+        ctx.request_repaint();
     }
 }
 
@@ -759,7 +806,7 @@ impl OpenVault {
             ui.add_space(10.0);
             ui.horizontal(|ui| {
                 let h = egui::vec2(0.0, 30.0);
-                do_connect = ui.add(filled_button("\u{25b6}  Connect", theme::CONNECT).min_size(egui::vec2(110.0, 30.0))).clicked();
+                do_connect = ui.add(filled_button("Connect", theme::CONNECT).min_size(egui::vec2(110.0, 30.0))).clicked();
                 do_save = ui.add(filled_button("Save", theme::ACCENT).min_size(egui::vec2(70.0, 30.0))).clicked();
                 if self.confirm_delete {
                     do_delete = ui.add(filled_button("Really delete?", theme::DANGER).min_size(h)).clicked();
@@ -1153,10 +1200,12 @@ fn swatch(ui: &mut egui::Ui, color: Rgb) {
 
 /// Number of connections in a group, as a coloured pill.
 fn count_badge(ui: &mut egui::Ui, count: usize, color: Rgb) {
-    let text = RichText::new(count.to_string()).small().strong().color(col(color));
-    egui::Frame::new().fill(tint(color, 0.14)).corner_radius(8).inner_margin(egui::Margin::symmetric(6, 0)).show(ui, |ui| {
-        ui.label(text);
-    });
+    let font = egui::FontId::proportional(11.0);
+    let galley = ui.painter().layout_no_wrap(count.to_string(), font, col(color));
+    let size = egui::vec2((galley.size().x + 12.0).max(22.0), 16.0);
+    let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+    ui.painter().rect_filled(rect, 8, tint(color, 0.16));
+    ui.painter().galley(rect.center() - galley.size() / 2.0, galley, col(color));
 }
 
 /// Round coloured badge with the first letter of a name.

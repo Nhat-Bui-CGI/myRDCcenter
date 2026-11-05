@@ -59,6 +59,10 @@ impl From<std::io::Error> for VaultError {
 /// (Local, not Roaming, so it never follows a domain profile to other PCs).
 /// A vault from before the rename (folder "RDS-center") is moved here on first use.
 pub fn default_vault_path() -> PathBuf {
+    // Use another vault file, e.g. a demo vault or one on a USB stick.
+    if let Some(p) = std::env::var_os("MYRDCCENTER_VAULT").filter(|p| !p.is_empty()) {
+        return PathBuf::from(p);
+    }
     let base = dirs::data_local_dir().unwrap_or_else(|| PathBuf::from("."));
     let path = base.join("myRDCcenter").join("vault.rdsc");
     let old = base.join("RDS-center").join("vault.rdsc");

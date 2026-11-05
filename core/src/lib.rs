@@ -9,6 +9,8 @@ pub mod import_rdm;
 pub mod keystore;
 pub mod model;
 pub mod rdp;
+#[cfg(feature = "screenshot")]
+pub mod screenshot;
 pub mod theme;
 pub mod vault;
 
