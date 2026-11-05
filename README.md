@@ -47,6 +47,8 @@ Go to [Releases](../../releases):
 
 On Windows and macOS, the app writes a temporary `.rdp` file and deletes it again after 60 seconds.
 
+On Windows, **Full screen** uses the size and display scale (125 %, 150 %, ...) of your primary monitor, so text in the session is as large as on your own screen. The session also resizes when the window changes size.
+
 ## Security
 
 - The vault file is stored here:
