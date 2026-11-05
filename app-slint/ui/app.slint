@@ -27,6 +27,104 @@ export struct ListRow {
     tooltip: string,
     depth: int,
     expanded: bool,
+    count: int,         // connections in the group (group rows only)
+    color: color,       // colour of the top-level group
+}
+
+// Same colours as myrdc_core::theme (used by the egui app too).
+global Theme {
+    out property <color> bg: #f4f5fb;
+    out property <color> panel: #ffffff;
+    out property <color> card: #ffffff;
+    out property <color> hover: #eceaff;
+    out property <color> border: #e1e4ef;
+    out property <color> text: #1b1e2e;
+    out property <color> text-weak: #6a708c;
+    out property <color> accent: #6d4aff;
+    out property <color> cyan: #0891b2;
+    out property <color> connect: #059669;
+    out property <color> danger: #e11d48;
+}
+
+// Button filled with a colour (white text), or outlined for risky / less important actions.
+component ColorButton inherits Rectangle {
+    in property <string> text;
+    in property <color> tone: Theme.accent;
+    in property <bool> outline;
+    callback clicked();
+    height: 32px;
+    min-width: label.preferred-width + 28px;
+    max-width: label.preferred-width + 28px;
+    border-radius: 6px;
+    border-width: root.outline ? 1px : 0px;
+    border-color: root.tone.with-alpha(0.55);
+    background: root.outline
+        ? (ta.has-hover ? root.tone.with-alpha(0.14) : root.tone.with-alpha(0.06))
+        : (ta.pressed ? root.tone.darker(0.25) : (ta.has-hover ? root.tone.brighter(0.12) : root.tone));
+    label := Text {
+        text: root.text;
+        color: root.outline ? root.tone : white;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Small "screen" icon.
+component ScreenIcon inherits Path {
+    in property <color> tone: white;
+    viewbox-width: 20;
+    viewbox-height: 20;
+    commands: "M 3 4 L 17 4 L 17 13 L 3 13 Z M 7 16.5 L 13 16.5 M 10 13 L 10 16.5";
+    stroke: root.tone;
+    stroke-width: 1.8px;
+    fill: transparent;
+}
+
+// App logo: violet/cyan rounded square with a screen inside.
+component Logo inherits Rectangle {
+    in property <length> size: 24px;
+    width: root.size;
+    height: root.size;
+    border-radius: root.size / 4;
+    clip: true;
+    background: @linear-gradient(135deg, Theme.accent 0%, Theme.accent 45%, Theme.cyan 100%);
+    ScreenIcon { width: root.size * 0.7; height: root.size * 0.7; }
+}
+
+// Round coloured badge in front of a title.
+component Avatar inherits Rectangle {
+    in property <color> tone;
+    in property <bool> folder;
+    width: 44px;
+    height: 44px;
+    border-radius: 22px;
+    background: root.tone.with-alpha(0.14);
+    border-width: 2px;
+    border-color: root.tone;
+    if !root.folder: ScreenIcon { width: 24px; height: 24px; tone: root.tone; }
+    if root.folder: Path {
+        width: 22px;
+        height: 22px;
+        viewbox-width: 20;
+        viewbox-height: 20;
+        commands: "M 2 5 L 8 5 L 10 7 L 18 7 L 18 16 L 2 16 Z";
+        stroke: root.tone;
+        stroke-width: 1.8px;
+        fill: transparent;
+    }
+}
+
+// White rounded card.
+component Card inherits Rectangle {
+    background: Theme.card;
+    border-radius: 10px;
+    border-width: 1px;
+    border-color: Theme.border;
 }
 
 component Field inherits HorizontalLayout {
@@ -35,9 +133,16 @@ component Field inherits HorizontalLayout {
     Text {
         text: root.label;
         width: 120px;
+        color: Theme.text-weak;
         vertical-alignment: center;
     }
     @children
+}
+
+component DialogTitle inherits Text {
+    font-size: 17px;
+    font-weight: 700;
+    color: Theme.text;
 }
 
 component LockScreen inherits Rectangle {
@@ -52,6 +157,7 @@ component LockScreen inherits Rectangle {
     callback unlock-remembered();
     property <string> confirm;
     property <bool> remember;
+    background: Theme.bg;
 
     function do-submit() {
         root.submit(pw.text, root.confirm, root.remember);
@@ -63,42 +169,50 @@ component LockScreen inherits Rectangle {
         alignment: center;
         HorizontalLayout {
             alignment: center;
-            VerticalLayout {
-                width: 320px;
-                spacing: 10px;
-                Text { text: "myRDCcenter"; font-size: 28px; horizontal-alignment: center; }
-                Text { text: "Version " + root.version; horizontal-alignment: center; color: Palette.foreground.with-alpha(0.6); }
-                Text {
-                    text: root.creating ? "Create a master password. It encrypts your vault and can't be recovered." : "Enter your master password to unlock.";
-                    wrap: word-wrap;
-                    horizontal-alignment: center;
+            Card {
+                width: 400px;
+                VerticalLayout {
+                    padding: 28px;
+                    spacing: 10px;
+                    HorizontalLayout { alignment: center; Logo { size: 52px; } }
+                    Text { text: "myRDCcenter"; font-size: 28px; font-weight: 700; color: Theme.text; horizontal-alignment: center; }
+                    Text { text: "Version " + root.version; horizontal-alignment: center; color: Theme.accent; }
+                    Text {
+                        text: root.creating ? "Create a master password. It encrypts your vault and can't be recovered." : "Enter your master password to unlock.";
+                        wrap: word-wrap;
+                        color: Theme.text-weak;
+                        horizontal-alignment: center;
+                    }
+                    pw := LineEdit {
+                        input-type: password;
+                        placeholder-text: "Master password";
+                        accepted => { root.do-submit(); }
+                    }
+                    if root.creating: LineEdit {
+                        input-type: password;
+                        placeholder-text: "Repeat password";
+                        text <=> root.confirm;
+                        accepted => { root.do-submit(); }
+                    }
+                    if root.remember-supported: CheckBox {
+                        text: root.remember-label;
+                        checked <=> root.remember;
+                    }
+                    ColorButton {
+                        max-width: 10000px;
+                        height: 36px;
+                        text: root.creating ? "Create vault" : "Unlock";
+                        clicked => { root.do-submit(); }
+                    }
+                    if root.has-remembered && !root.creating: ColorButton {
+                        max-width: 10000px;
+                        outline: true;
+                        text: "Unlock with my computer login";
+                        clicked => { root.unlock-remembered(); }
+                    }
+                    Text { text: root.error; color: Theme.danger; horizontal-alignment: center; height: 20px; }
+                    Text { text: root.vault-path; font-size: 11px; color: Theme.text-weak; horizontal-alignment: center; wrap: word-wrap; }
                 }
-                pw := LineEdit {
-                    input-type: password;
-                    placeholder-text: "Master password";
-                    accepted => { root.do-submit(); }
-                }
-                if root.creating: LineEdit {
-                    input-type: password;
-                    placeholder-text: "Repeat password";
-                    text <=> root.confirm;
-                    accepted => { root.do-submit(); }
-                }
-                if root.remember-supported: CheckBox {
-                    text: root.remember-label;
-                    checked <=> root.remember;
-                }
-                Button {
-                    text: root.creating ? "Create vault" : "Unlock";
-                    primary: true;
-                    clicked => { root.do-submit(); }
-                }
-                if root.has-remembered && !root.creating: Button {
-                    text: "Unlock with my computer login";
-                    clicked => { root.unlock-remembered(); }
-                }
-                Text { text: root.error; color: #ff7070; horizontal-alignment: center; height: 20px; }
-                Text { text: root.vault-path; font-size: 11px; color: Palette.foreground.with-alpha(0.5); horizontal-alignment: center; wrap: word-wrap; }
             }
         }
     }
@@ -109,6 +223,7 @@ export component MainWindow inherits Window {
     in property <string> version;
     title: "myRDCcenter " + root.version;
     icon: @image-url("../../assets/icon-256.png");
+    background: Theme.bg;
     preferred-width: 1000px;
     preferred-height: 720px;
     min-width: 720px;
@@ -179,6 +294,12 @@ export component MainWindow inherits Window {
     callback export-scope-changed(string);
     callback export-ok(string, string);
     callback import-pw-ok(string);
+    // Colours, computed in Rust from myrdc_core::theme.
+    pure callback group-color(string) -> color;
+    pure callback status-color(string) -> color;
+
+    // The colourful theme is designed for light backgrounds.
+    init => { Palette.color-scheme = ColorScheme.light; }
 
     if root.locked: LockScreen {
         creating: root.creating;
@@ -194,86 +315,123 @@ export component MainWindow inherits Window {
 
     if !root.locked: VerticalLayout {
         // Toolbar
-        HorizontalBox {
-            Button { text: "New connection"; clicked => { root.new-connection(); } }
-            Button { text: "New group"; clicked => { root.new-group(); } }
-            Button { text: "Import"; clicked => { root.import-rdp(); } }
-            Button { text: "Export"; clicked => { root.export-request(""); } }
-            Button { text: "Backup"; clicked => { root.backup(); } }
-            Button { text: "Change password"; clicked => { root.change-pw-open = true; } }
-            if root.remember-supported: CheckBox {
-                text: "Remember on this computer";
-                checked <=> root.remembered;
-                toggled => { root.set-remember(self.checked); }
+        Rectangle {
+            background: Theme.panel;
+            HorizontalBox {
+                Logo { size: 24px; y: (parent.height - self.height) / 2; }
+                Text { text: "myRDCcenter"; font-size: 15px; font-weight: 700; color: Theme.text; vertical-alignment: center; }
+                Rectangle { width: 6px; }
+                ColorButton { text: "+ New connection"; clicked => { root.new-connection(); } }
+                Button { text: "New group"; clicked => { root.new-group(); } }
+                Button { text: "Import"; clicked => { root.import-rdp(); } }
+                Button { text: "Export"; clicked => { root.export-request(""); } }
+                Button { text: "Backup"; clicked => { root.backup(); } }
+                Button { text: "Change password"; clicked => { root.change-pw-open = true; } }
+                if root.remember-supported: CheckBox {
+                    text: "Remember on this computer";
+                    checked <=> root.remembered;
+                    toggled => { root.set-remember(self.checked); }
+                }
+                Text { text: "Auto-lock (min):"; color: Theme.text-weak; vertical-alignment: center; }
+                SpinBox {
+                    width: 90px;
+                    minimum: 0;
+                    maximum: 240;
+                    value <=> root.auto-lock-minutes;
+                    edited(v) => { root.auto-lock-changed(v); }
+                }
+                Rectangle { horizontal-stretch: 1; }
+                ColorButton { text: "Lock"; tone: Theme.danger; outline: true; clicked => { root.lock(); } }
             }
-            Text { text: "Auto-lock (min):"; vertical-alignment: center; }
-            SpinBox {
-                width: 90px;
-                minimum: 0;
-                maximum: 240;
-                value <=> root.auto-lock-minutes;
-                edited(v) => { root.auto-lock-changed(v); }
-            }
-            Rectangle { horizontal-stretch: 1; }
-            Button { text: "Lock"; clicked => { root.lock(); } }
         }
+        Rectangle { height: 1px; background: Theme.border; }
 
         HorizontalLayout {
             vertical-stretch: 1;
             // Connection list
-            VerticalBox {
+            Rectangle {
                 width: root.sidebar-width;
-                LineEdit {
-                    placeholder-text: "Search";
-                    text <=> root.search;
-                    edited(t) => { root.search-changed(t); }
-                }
-                ScrollView {
-                    vertical-stretch: 1;
-                    VerticalLayout {
-                        alignment: start;
-                        for row in root.rows: Rectangle {
-                            property <bool> is-group: row.id == "";
-                            property <bool> selected: is-group ? row.group-path == root.selected-group : row.id == root.selected-id;
-                            height: 26px;
-                            border-radius: 4px;
-                            background: selected ? Palette.selection-background : (ta.has-hover ? Palette.alternate-background : transparent);
-                            ta := TouchArea {
-                                clicked => {
-                                    if (is-group) { root.click-group(row.group-path); } else { root.select(row.id); }
+                background: Theme.panel;
+                VerticalBox {
+                    LineEdit {
+                        placeholder-text: "Search";
+                        text <=> root.search;
+                        edited(t) => { root.search-changed(t); }
+                    }
+                    ScrollView {
+                        vertical-stretch: 1;
+                        VerticalLayout {
+                            alignment: start;
+                            spacing: 2px;
+                            for row in root.rows: Rectangle {
+                                property <bool> is-group: row.id == "";
+                                property <bool> selected: is-group ? row.group-path == root.selected-group : row.id == root.selected-id;
+                                property <length> indent: row.depth * 16px;
+                                height: 28px;
+                                border-radius: 6px;
+                                background: selected ? row.color.with-alpha(0.14) : (ta.has-hover ? Theme.hover : transparent);
+                                ta := TouchArea {
+                                    clicked => {
+                                        if (is-group) { root.click-group(row.group-path); } else { root.select(row.id); }
+                                    }
+                                    double-clicked => {
+                                        if (!is-group) { root.activate(row.id); }
+                                    }
                                 }
-                                double-clicked => {
-                                    if (!is-group) { root.activate(row.id); }
+                                // Coloured bar on the left of the selected row
+                                if selected: Rectangle {
+                                    x: 0;
+                                    width: 3px;
+                                    height: parent.height - 8px;
+                                    border-radius: 2px;
+                                    background: row.color;
+                                }
+                                // Expand / collapse arrow for groups
+                                if is-group: Rectangle {
+                                    x: indent + 4px;
+                                    width: 16px;
+                                    height: parent.height;
+                                    Path {
+                                        width: 10px;
+                                        height: 10px;
+                                        viewbox-width: 10;
+                                        viewbox-height: 10;
+                                        commands: row.expanded ? "M 1 3 L 9 3 L 5 8 Z" : "M 3 1 L 8 5 L 3 9 Z";
+                                        fill: Theme.text-weak;
+                                    }
+                                    TouchArea { clicked => { root.toggle-group(row.group-path); } }
+                                }
+                                // Square for groups, dot for connections
+                                Rectangle {
+                                    x: indent + 24px;
+                                    width: is-group ? 10px : 8px;
+                                    height: self.width;
+                                    border-radius: is-group ? 3px : 4px;
+                                    background: row.color;
+                                }
+                                Text {
+                                    x: indent + 42px;
+                                    text: row.title;
+                                    font-weight: is-group ? 700 : 400;
+                                    vertical-alignment: center;
+                                    color: selected ? row.color.darker(0.2) : Theme.text;
+                                    overflow: elide;
+                                    width: parent.width - self.x - (is-group ? 44px : 6px);
+                                }
+                                if is-group: Rectangle {
+                                    x: parent.width - self.width - 6px;
+                                    width: max(24px, cnt.preferred-width + 12px);
+                                    height: 18px;
+                                    border-radius: 9px;
+                                    background: row.color.with-alpha(0.16);
+                                    cnt := Text { text: row.count; font-size: 11px; font-weight: 700; color: row.color; }
                                 }
                             }
-                            // Expand / collapse arrow for groups
-                            if is-group: Rectangle {
-                                x: row.depth * 16px + 2px;
-                                width: 16px;
-                                height: parent.height;
-                                Path {
-                                    width: 10px;
-                                    height: 10px;
-                                    viewbox-width: 10;
-                                    viewbox-height: 10;
-                                    commands: row.expanded ? "M 1 3 L 9 3 L 5 8 Z" : "M 3 1 L 8 5 L 3 9 Z";
-                                    fill: selected ? Palette.selection-foreground : Palette.foreground;
-                                }
-                                TouchArea { clicked => { root.toggle-group(row.group-path); } }
+                            if root.rows.length == 0: Text {
+                                text: root.search == "" ? "No connections yet. Click New connection." : "Nothing found.";
+                                color: Theme.text-weak;
+                                wrap: word-wrap;
                             }
-                            Text {
-                                x: row.depth * 16px + 22px;
-                                text: row.title;
-                                font-weight: is-group ? 700 : 400;
-                                vertical-alignment: center;
-                                color: selected ? Palette.selection-foreground : Palette.foreground;
-                                overflow: elide;
-                                width: parent.width - self.x - 4px;
-                            }
-                        }
-                        if root.rows.length == 0: Text {
-                            text: root.search == "" ? "No connections yet. Click New connection." : "Nothing found.";
-                            color: Palette.foreground.with-alpha(0.5);
                         }
                     }
                 }
@@ -281,7 +439,8 @@ export component MainWindow inherits Window {
             // Drag to resize the connection list
             Rectangle {
                 width: 7px;
-                Rectangle { width: 1px; background: splitter.has-hover || splitter.pressed ? Palette.accent-background : Palette.border; }
+                background: Theme.bg;
+                Rectangle { x: 0; width: splitter.has-hover || splitter.pressed ? 2px : 1px; background: splitter.has-hover || splitter.pressed ? Theme.accent : Theme.border; }
                 splitter := TouchArea {
                     mouse-cursor: ew-resize;
                     moved => {
@@ -293,90 +452,122 @@ export component MainWindow inherits Window {
             }
 
             // Details
-            if !root.has-draft && root.selected-group != "": VerticalBox {
+            if !root.has-draft && root.selected-group != "": VerticalLayout {
                 horizontal-stretch: 1;
                 alignment: start;
-                Text { text: root.selected-group; font-size: 20px; overflow: elide; }
-                Text { text: root.group-count-text; color: Palette.foreground.with-alpha(0.7); }
+                padding: 16px;
+                spacing: 12px;
+                HorizontalLayout {
+                    spacing: 12px;
+                    Avatar { tone: root.group-color(root.selected-group); folder: true; }
+                    VerticalLayout {
+                        alignment: center;
+                        Text { text: root.selected-group; font-size: 22px; font-weight: 700; color: Theme.text; overflow: elide; }
+                        Text { text: root.group-count-text; color: root.group-color(root.selected-group); }
+                    }
+                }
                 HorizontalLayout {
                     spacing: 8px;
                     alignment: start;
-                    Button { text: "New connection here"; clicked => { root.new-connection-here(); } }
+                    ColorButton { text: "+ New connection here"; clicked => { root.new-connection-here(); } }
                     Button { text: "New subgroup"; clicked => { root.new-group(); } }
                     Button { text: "Rename / move"; clicked => { root.rename-group(); } }
                     Button { text: "Export group"; clicked => { root.export-request(root.selected-group); } }
-                    if !root.confirm-delete-group: Button { text: "Delete group"; clicked => { root.confirm-delete-group = true; } }
-                    if root.confirm-delete-group: Button { text: "Really delete group?"; clicked => { root.delete-group(); } }
+                    if !root.confirm-delete-group: ColorButton { text: "Delete group"; tone: Theme.danger; outline: true; clicked => { root.confirm-delete-group = true; } }
+                    if root.confirm-delete-group: ColorButton { text: "Really delete group?"; tone: Theme.danger; clicked => { root.delete-group(); } }
                     if root.confirm-delete-group: Button { text: "Cancel"; clicked => { root.confirm-delete-group = false; } }
                 }
                 if root.confirm-delete-group: Text {
                     text: "Connections in this group are kept and move up one level.";
-                    color: Palette.foreground.with-alpha(0.6);
+                    color: Theme.text-weak;
                 }
             }
-            if !root.has-draft && root.selected-group == "": Text {
+            if !root.has-draft && root.selected-group == "": VerticalLayout {
                 horizontal-stretch: 1;
-                text: "Select a connection, or double-click to connect";
-                horizontal-alignment: center;
-                vertical-alignment: center;
-                color: Palette.foreground.with-alpha(0.5);
+                alignment: center;
+                spacing: 12px;
+                HorizontalLayout { alignment: center; Logo { size: 64px; } }
+                Text {
+                    text: "Select a connection, or double-click to connect";
+                    font-size: 15px;
+                    horizontal-alignment: center;
+                    color: Theme.text-weak;
+                }
             }
             if root.has-draft: VerticalLayout {
                 horizontal-stretch: 1;
                 // Title and actions stay visible; only the form scrolls.
-                HorizontalBox {
-                    Text {
-                        text: root.draft.name == "" ? root.draft.host : root.draft.name;
-                        font-size: 20px;
-                        vertical-alignment: center;
-                        overflow: elide;
+                HorizontalLayout {
+                    padding: 16px;
+                    padding-bottom: 8px;
+                    spacing: 8px;
+                    Avatar { tone: root.group-color(root.draft.group); }
+                    VerticalLayout {
                         horizontal-stretch: 1;
+                        alignment: center;
+                        Text {
+                            text: root.draft.name == "" ? root.draft.host : root.draft.name;
+                            font-size: 22px;
+                            font-weight: 700;
+                            color: Theme.text;
+                            overflow: elide;
+                        }
+                        Text {
+                            text: root.draft.group + "  ·  " + root.draft.host;
+                            color: root.group-color(root.draft.group);
+                            overflow: elide;
+                        }
                     }
-                    Button { text: "Connect"; primary: true; clicked => { root.connect(); } }
-                    Button { text: "Save"; clicked => { root.save(); } }
-                    if !root.confirm-delete: Button { text: "Delete"; clicked => { root.confirm-delete = true; } }
-                    if root.confirm-delete: Button { text: "Really delete?"; clicked => { root.delete(); } }
+                    ColorButton { y: (parent.height - self.height) / 2; text: "▶  Connect"; tone: Theme.connect; clicked => { root.connect(); } }
+                    ColorButton { y: (parent.height - self.height) / 2; text: "Save"; clicked => { root.save(); } }
+                    if !root.confirm-delete: ColorButton { text: "Delete"; tone: Theme.danger; outline: true; clicked => { root.confirm-delete = true; } }
+                    if root.confirm-delete: ColorButton { text: "Really delete?"; tone: Theme.danger; clicked => { root.delete(); } }
                     if root.confirm-delete: Button { text: "Cancel"; clicked => { root.confirm-delete = false; } }
                 }
                 ScrollView {
                     vertical-stretch: 1;
                     HorizontalLayout {
                         alignment: start;
-                        VerticalBox {
-                            alignment: start;
-                            spacing: 8px;
-                            width: min(640px, root.width - root.sidebar-width - 20px);
-                            Field { label: "Name"; LineEdit { text <=> root.draft.name; } }
-                            Field { label: "Group"; ComboBox { model: root.group-names; current-value <=> root.draft.group; } }
-                            Field { label: "Host"; LineEdit { text <=> root.draft.host; } }
-                            Field { label: "Port"; SpinBox { width: 140px; minimum: 1; maximum: 65535; value <=> root.draft.port; } Rectangle {} }
-                            Field { label: "Username"; LineEdit { text <=> root.draft.username; } }
-                            Field { label: "Domain"; LineEdit { text <=> root.draft.domain; } }
-                            Field {
-                                label: "Password";
-                                LineEdit { text <=> root.draft.password; input-type: root.show-password ? text : password; }
-                                Button { text: root.show-password ? "Hide" : "Show"; clicked => { root.show-password = !root.show-password; } }
-                            }
-                            Field { label: "RD Gateway"; LineEdit { text <=> root.draft.gateway; } }
-                            Field {
-                                label: "Screen";
-                                CheckBox { text: "Full screen"; checked <=> root.draft.fullscreen; }
-                                SpinBox { width: 120px; enabled: !root.draft.fullscreen; minimum: 640; maximum: 7680; value <=> root.draft.width; }
-                                Text { text: "x"; vertical-alignment: center; }
-                                SpinBox { width: 120px; enabled: !root.draft.fullscreen; minimum: 480; maximum: 4320; value <=> root.draft.height; }
-                                Rectangle {}
-                            }
-                            Field {
-                                label: "Options";
-                                VerticalLayout {
-                                    spacing: 4px;
-                                    CheckBox { text: "Use all monitors"; checked <=> root.draft.multimon; }
-                                    CheckBox { text: "Share clipboard"; checked <=> root.draft.redirect-clipboard; }
-                                    CheckBox { text: "Share local drives"; checked <=> root.draft.redirect-drives; }
-                                    CheckBox { text: "Admin / console session"; checked <=> root.draft.admin-session; }
+                        padding-left: 16px;
+                        padding-bottom: 16px;
+                        Card {
+                            width: min(660px, root.width - root.sidebar-width - 40px);
+                            VerticalLayout {
+                                alignment: start;
+                                padding: 16px;
+                                spacing: 8px;
+                                Field { label: "Name"; LineEdit { text <=> root.draft.name; } }
+                                Field { label: "Group"; ComboBox { model: root.group-names; current-value <=> root.draft.group; } }
+                                Field { label: "Host"; LineEdit { text <=> root.draft.host; } }
+                                Field { label: "Port"; SpinBox { width: 140px; minimum: 1; maximum: 65535; value <=> root.draft.port; } Rectangle {} }
+                                Field { label: "Username"; LineEdit { text <=> root.draft.username; } }
+                                Field { label: "Domain"; LineEdit { text <=> root.draft.domain; } }
+                                Field {
+                                    label: "Password";
+                                    LineEdit { text <=> root.draft.password; input-type: root.show-password ? text : password; }
+                                    Button { text: root.show-password ? "Hide" : "Show"; clicked => { root.show-password = !root.show-password; } }
                                 }
+                                Field { label: "RD Gateway"; LineEdit { text <=> root.draft.gateway; } }
+                                Field {
+                                    label: "Screen";
+                                    CheckBox { text: "Full screen"; checked <=> root.draft.fullscreen; }
+                                    SpinBox { width: 120px; enabled: !root.draft.fullscreen; minimum: 640; maximum: 7680; value <=> root.draft.width; }
+                                    Text { text: "x"; color: Theme.text-weak; vertical-alignment: center; }
+                                    SpinBox { width: 120px; enabled: !root.draft.fullscreen; minimum: 480; maximum: 4320; value <=> root.draft.height; }
+                                    Rectangle {}
+                                }
+                                Field {
+                                    label: "Options";
+                                    VerticalLayout {
+                                        spacing: 4px;
+                                        CheckBox { text: "Use all monitors"; checked <=> root.draft.multimon; }
+                                        CheckBox { text: "Share clipboard"; checked <=> root.draft.redirect-clipboard; }
+                                        CheckBox { text: "Share local drives"; checked <=> root.draft.redirect-drives; }
+                                        CheckBox { text: "Admin / console session"; checked <=> root.draft.admin-session; }
+                                    }
+                                }
+                                Field { label: "Notes"; TextEdit { text <=> root.draft.notes; height: 80px; } }
                             }
-                            Field { label: "Notes"; TextEdit { text <=> root.draft.notes; height: 80px; } }
                         }
                     }
                 }
@@ -384,37 +575,43 @@ export component MainWindow inherits Window {
         }
 
         // Status bar
+        Rectangle { height: 1px; background: Theme.border; }
         Rectangle {
-            height: 24px;
+            height: 26px;
+            background: Theme.panel;
+            if root.status != "": Rectangle {
+                x: 10px;
+                width: 8px;
+                height: 8px;
+                border-radius: 4px;
+                background: root.status-color(root.status);
+            }
             Text {
-                x: 8px;
+                x: 26px;
                 text: root.status;
-                color: Palette.foreground.with-alpha(0.6);
+                color: Theme.text-weak;
                 vertical-alignment: center;
                 overflow: elide;
-                width: parent.width - 16px;
+                width: parent.width - 36px;
             }
         }
     }
 
     // Change-password dialog
     if root.change-pw-open && !root.locked: Rectangle {
-        background: #00000080;
+        background: #1b1e2e80;
         TouchArea {}
-        Rectangle {
+        Card {
             width: 340px;
-            height: 200px;
-            background: Palette.background;
-            border-radius: 8px;
-            border-width: 1px;
-            border-color: Palette.border;
+            height: 210px;
+            border-radius: 12px;
             VerticalBox {
-                Text { text: "Change master password"; font-size: 16px; }
+                DialogTitle { text: "Change master password"; }
                 np := LineEdit { input-type: password; placeholder-text: "New password"; }
                 np2 := LineEdit { input-type: password; placeholder-text: "Repeat"; }
                 HorizontalLayout {
                     spacing: 8px;
-                    Button { text: "Change"; primary: true; clicked => { root.change-password(np.text, np2.text); np.text = ""; np2.text = ""; } }
+                    ColorButton { text: "Change"; clicked => { root.change-password(np.text, np2.text); np.text = ""; np2.text = ""; } }
                     Button { text: "Cancel"; clicked => { root.change-pw-open = false; np.text = ""; np2.text = ""; } }
                 }
             }
@@ -423,28 +620,25 @@ export component MainWindow inherits Window {
 
     // New / rename group dialog
     if root.group-dialog-open && !root.locked: Rectangle {
-        background: #00000080;
+        background: #1b1e2e80;
         TouchArea {}
-        Rectangle {
+        Card {
             width: 360px;
-            height: 210px;
-            background: Palette.background;
-            border-radius: 8px;
-            border-width: 1px;
-            border-color: Palette.border;
+            height: 220px;
+            border-radius: 12px;
             VerticalBox {
-                Text { text: root.group-dialog-title; font-size: 16px; }
-                Text { text: root.group-dialog-hint; color: Palette.foreground.with-alpha(0.6); }
+                DialogTitle { text: root.group-dialog-title; }
+                Text { text: root.group-dialog-hint; color: Theme.text-weak; }
                 gn := LineEdit {
                     placeholder-text: "Group name";
                     text <=> root.group-dialog-name;
                     accepted => { root.group-dialog-ok(self.text); }
                     init => { self.focus(); }
                 }
-                Text { text: root.group-dialog-error; color: #ff7070; height: 18px; }
+                Text { text: root.group-dialog-error; color: Theme.danger; height: 18px; }
                 HorizontalLayout {
                     spacing: 8px;
-                    Button { text: "OK"; primary: true; clicked => { root.group-dialog-ok(gn.text); } }
+                    ColorButton { text: "OK"; clicked => { root.group-dialog-ok(gn.text); } }
                     Button { text: "Cancel"; clicked => { root.group-dialog-open = false; } }
                 }
             }
@@ -453,35 +647,32 @@ export component MainWindow inherits Window {
 
     // Export dialog
     if root.export-open && !root.locked: Rectangle {
-        background: #00000080;
+        background: #1b1e2e80;
         TouchArea {}
-        Rectangle {
+        Card {
             width: 420px;
-            height: 360px;
-            background: Palette.background;
-            border-radius: 8px;
-            border-width: 1px;
-            border-color: Palette.border;
+            height: 370px;
+            border-radius: 12px;
             VerticalBox {
-                Text { text: "Export connections"; font-size: 16px; }
+                DialogTitle { text: "Export connections"; }
                 Text {
                     text: "Makes an encrypted .rdcx file with connections and passwords. Open it on the other computer with Import.";
                     wrap: word-wrap;
-                    color: Palette.foreground.with-alpha(0.7);
+                    color: Theme.text-weak;
                 }
                 ComboBox {
                     model: root.export-scopes;
                     current-value <=> root.export-scope;
                     selected(v) => { root.export-scope-changed(v); }
                 }
-                Text { text: root.export-count-text; color: Palette.foreground.with-alpha(0.6); }
+                Text { text: root.export-count-text; color: Theme.accent; }
                 ep := LineEdit { input-type: password; placeholder-text: "Password for the file"; }
                 ep2 := LineEdit { input-type: password; placeholder-text: "Repeat password"; }
                 CheckBox { text: "Move: remove them from this computer after exporting"; checked <=> root.export-move; }
-                Text { text: root.export-error; color: #ff7070; height: 18px; }
+                Text { text: root.export-error; color: Theme.danger; height: 18px; }
                 HorizontalLayout {
                     spacing: 8px;
-                    Button { text: "Export..."; primary: true; clicked => { root.export-ok(ep.text, ep2.text); } }
+                    ColorButton { text: "Export..."; clicked => { root.export-ok(ep.text, ep2.text); } }
                     Button { text: "Cancel"; clicked => { root.export-open = false; ep.text = ""; ep2.text = ""; } }
                 }
             }
@@ -490,28 +681,25 @@ export component MainWindow inherits Window {
 
     // Password for importing an .rdcx file
     if root.import-pw-open && !root.locked: Rectangle {
-        background: #00000080;
+        background: #1b1e2e80;
         TouchArea {}
-        Rectangle {
+        Card {
             width: 360px;
-            height: 200px;
-            background: Palette.background;
-            border-radius: 8px;
-            border-width: 1px;
-            border-color: Palette.border;
+            height: 210px;
+            border-radius: 12px;
             VerticalBox {
-                Text { text: "Import export file"; font-size: 16px; }
-                Text { text: "Enter the password chosen when the file was exported."; wrap: word-wrap; color: Palette.foreground.with-alpha(0.7); }
+                DialogTitle { text: "Import export file"; }
+                Text { text: "Enter the password chosen when the file was exported."; wrap: word-wrap; color: Theme.text-weak; }
                 ip := LineEdit {
                     input-type: password;
                     placeholder-text: "Export password";
                     accepted => { root.import-pw-ok(self.text); }
                     init => { self.focus(); }
                 }
-                Text { text: root.import-pw-error; color: #ff7070; height: 18px; }
+                Text { text: root.import-pw-error; color: Theme.danger; height: 18px; }
                 HorizontalLayout {
                     spacing: 8px;
-                    Button { text: "Import"; primary: true; clicked => { root.import-pw-ok(ip.text); } }
+                    ColorButton { text: "Import"; clicked => { root.import-pw-ok(ip.text); } }
                     Button { text: "Cancel"; clicked => { root.import-pw-open = false; } }
                 }
             }

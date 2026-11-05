@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
+use myrdc_core::theme;
 use myrdc_core::{default_vault_path, export, groups, idle, import, keystore, rdp, Connection, Secret, TreeRow, Vault};
 use slint::{ComponentHandle, ModelRc, SharedString, Timer, TimerMode, VecModel};
 use uuid::Uuid;
@@ -31,6 +32,11 @@ type Shared = Rc<RefCell<State>>;
 
 fn main() -> Result<(), slint::PlatformError> {
     let ui = MainWindow::new()?;
+    ui.on_group_color(|g| {
+        let g = if g == NO_GROUP { "" } else { g.as_str() };
+        to_color(theme::group_color(g))
+    });
+    ui.on_status_color(|s| to_color(theme::status_color(&s)));
     ui.set_version(env!("CARGO_PKG_VERSION").into());
     let path = default_vault_path();
     ui.set_vault_path(path.display().to_string().into());
@@ -704,18 +710,21 @@ fn launch(ui: &MainWindow, c: &Connection) {
 fn refresh_list(ui: &MainWindow, s: &Shared) {
     let st = s.borrow();
     let Some(v) = st.vault.as_ref() else { return };
-    let rows: Vec<ListRow> = v
-        .data
-        .tree_rows(&ui.get_search())
+    let tree = v.data.tree_rows(&ui.get_search());
+    let colors = theme::row_colors(&tree);
+    let rows: Vec<ListRow> = tree
         .into_iter()
-        .map(|r| match r {
+        .zip(colors)
+        .map(|(r, rgb)| match r {
             TreeRow::Group { path, name, depth, expanded, count } => ListRow {
                 id: "".into(),
                 group_path: path.into(),
-                title: format!("{name}  ({count})").into(),
+                title: name.into(),
                 tooltip: "".into(),
                 depth: depth as i32,
                 expanded,
+                count: count as i32,
+                color: to_color(rgb),
             },
             TreeRow::Connection { id, name, address, depth } => ListRow {
                 id: id.to_string().into(),
@@ -724,6 +733,8 @@ fn refresh_list(ui: &MainWindow, s: &Shared) {
                 tooltip: address.into(),
                 depth: depth as i32,
                 expanded: false,
+                count: 0,
+                color: to_color(rgb),
             },
         })
         .collect();
@@ -731,6 +742,10 @@ fn refresh_list(ui: &MainWindow, s: &Shared) {
     names.extend(v.data.all_groups().into_iter().map(SharedString::from));
     ui.set_group_names(ModelRc::new(VecModel::from(names)));
     ui.set_rows(ModelRc::new(VecModel::from(rows)));
+}
+
+fn to_color(c: theme::Rgb) -> slint::Color {
+    slint::Color::from_rgb_u8(c.0, c.1, c.2)
 }
 
 fn to_data(c: &Connection) -> ConnData {

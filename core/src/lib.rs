@@ -9,6 +9,7 @@ pub mod import_rdm;
 pub mod keystore;
 pub mod model;
 pub mod rdp;
+pub mod theme;
 pub mod vault;
 
 pub use groups::TreeRow;

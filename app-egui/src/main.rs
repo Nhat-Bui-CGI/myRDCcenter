@@ -14,6 +14,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use eframe::egui::{self, Color32, RichText};
+use myrdc_core::theme::{self, Rgb};
 use myrdc_core::{default_vault_path, export, groups, import, keystore, rdp, Connection, TreeRow, Vault};
 use uuid::Uuid;
 
@@ -142,6 +143,7 @@ impl App {
         cc.egui_ctx.all_styles_mut(|style| {
             // No fade animations: they are a common source of visible flicker.
             style.animation_time = 0.0;
+            apply_theme(style);
         });
         let vault_path = default_vault_path();
         // Open straight away when the key is remembered on this computer.
@@ -178,7 +180,7 @@ impl App {
 impl eframe::App for App {
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
         // Same as the light panel fill, so a resize never shows a different colour.
-        egui::Color32::from_gray(248).to_normalized_gamma_f32()
+        col(theme::BG).to_normalized_gamma_f32()
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
@@ -204,10 +206,15 @@ impl eframe::App for App {
 fn lock_ui(ui: &mut egui::Ui, lock: &mut LockScreen, path: &PathBuf) -> Option<Vault> {
     let creating = !Vault::exists(path);
     let mut result = None;
-    egui::CentralPanel::default().show(ui, |ui| {
-        ui.add_space(ui.available_height() * 0.25);
+    egui::CentralPanel::default().frame(egui::Frame::new().fill(col(theme::BG))).show(ui, |ui| {
+        ui.add_space(ui.available_height() * 0.18);
         ui.vertical_centered(|ui| {
-            ui.heading(RichText::new("myRDCcenter").size(28.0));
+          card().inner_margin(egui::Margin::same(28)).show(ui, |ui| {
+           ui.set_width(340.0);
+           ui.vertical_centered(|ui| {
+            logo(ui, 48.0);
+            ui.add_space(6.0);
+            ui.label(RichText::new("myRDCcenter").size(28.0).strong().color(col(theme::TEXT)));
             ui.label(RichText::new(concat!("Version ", env!("CARGO_PKG_VERSION"))).weak());
             ui.add_space(8.0);
             ui.label(if creating {
@@ -232,8 +239,8 @@ fn lock_ui(ui: &mut egui::Ui, lock: &mut LockScreen, path: &PathBuf) -> Option<V
                 ui.checkbox(&mut lock.remember, keystore::label());
             }
             ui.add_space(8.0);
-            submit |= ui.button(if creating { "Create vault" } else { "Unlock" }).clicked();
-            if lock.has_remembered && !creating && ui.button("Unlock with my computer login").clicked() {
+            submit |= ui.add_sized([280.0, 32.0], filled_button(if creating { "Create vault" } else { "Unlock" }, theme::ACCENT)).clicked();
+            if lock.has_remembered && !creating && ui.add_sized([280.0, 28.0], egui::Button::new("Unlock with my computer login")).clicked() {
                 match Vault::open_remembered(path) {
                     Some(Ok(v)) => result = Some(v),
                     Some(Err(e)) => lock.error = e.to_string(),
@@ -244,7 +251,7 @@ fn lock_ui(ui: &mut egui::Ui, lock: &mut LockScreen, path: &PathBuf) -> Option<V
                 }
             }
             // Fixed-height error line, so the layout doesn't jump when an error shows up.
-            ui.add_sized([400.0, 20.0], egui::Label::new(RichText::new(&lock.error).color(Color32::from_rgb(190, 30, 30))));
+            ui.add_sized([300.0, 20.0], egui::Label::new(RichText::new(&lock.error).color(col(theme::DANGER))));
             ui.label(RichText::new(path.display().to_string()).small().weak());
 
             if submit {
@@ -277,6 +284,8 @@ fn lock_ui(ui: &mut egui::Ui, lock: &mut LockScreen, path: &PathBuf) -> Option<V
             if ui.memory(|m| m.focused().is_none()) {
                 pw.request_focus();
             }
+           });
+          });
         });
     });
     result
@@ -341,9 +350,13 @@ impl OpenVault {
     fn ui(&mut self, ui: &mut egui::Ui) -> bool {
         let mut lock = false;
 
-        egui::Panel::top("toolbar").show(ui, |ui| {
+        let bar = egui::Frame::new().fill(col(theme::PANEL)).inner_margin(egui::Margin::symmetric(10, 8));
+        egui::Panel::top("toolbar").frame(bar).show(ui, |ui| {
             ui.horizontal(|ui| {
-                if ui.button("New connection").clicked() {
+                logo(ui, 22.0);
+                ui.label(RichText::new("myRDCcenter").strong().size(15.0).color(col(theme::TEXT)));
+                ui.add_space(8.0);
+                if ui.add(filled_button("+ New connection", theme::ACCENT)).clicked() {
                     let group = self.current_group();
                     self.new_connection(&group);
                 }
@@ -385,25 +398,32 @@ impl OpenVault {
                     let _ = self.vault.save();
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button("Lock").clicked() {
+                    if ui.add(outline_button("Lock", theme::DANGER)).clicked() {
                         lock = true;
                     }
                 });
             });
         });
 
-        egui::Panel::bottom("status").show(ui, |ui| {
-            ui.add_sized([ui.available_width(), 18.0], egui::Label::new(RichText::new(&self.status).weak()).truncate());
+        let status = egui::Frame::new().fill(col(theme::PANEL)).inner_margin(egui::Margin::symmetric(10, 3));
+        egui::Panel::bottom("status").frame(status).show(ui, |ui| {
+            ui.horizontal(|ui| {
+                if !self.status.is_empty() {
+                    dot(ui, theme::status_color(&self.status), 8.0);
+                }
+                ui.add_sized([ui.available_width(), 18.0], egui::Label::new(RichText::new(&self.status).color(col(theme::TEXT_WEAK))).truncate());
+            });
         });
 
-        egui::Panel::left("list").resizable(true).default_size(280.0).size_range(200.0..=500.0).show(ui, |ui| {
-            ui.add_space(4.0);
-            ui.add(egui::TextEdit::singleline(&mut self.search).hint_text("Search").desired_width(f32::INFINITY).id_salt("search"));
-            ui.add_space(4.0);
+        let side = egui::Frame::new().fill(col(theme::PANEL)).inner_margin(egui::Margin::symmetric(8, 8));
+        egui::Panel::left("list").frame(side).resizable(true).default_size(280.0).size_range(200.0..=500.0).show(ui, |ui| {
+            ui.add(egui::TextEdit::singleline(&mut self.search).hint_text("Search").desired_width(f32::INFINITY).margin(egui::Margin::symmetric(8, 5)).id_salt("search"));
+            ui.add_space(6.0);
             self.list_ui(ui);
         });
 
-        egui::CentralPanel::default().show(ui, |ui| self.detail_ui(ui));
+        let main = egui::Frame::new().fill(col(theme::BG)).inner_margin(egui::Margin::same(16));
+        egui::CentralPanel::default().frame(main).show(ui, |ui| self.detail_ui(ui));
 
         self.change_password_ui(ui);
         self.group_dialog_ui(ui);
@@ -443,11 +463,12 @@ impl OpenVault {
     fn list_ui(&mut self, ui: &mut egui::Ui) {
         let mut action = None;
         let rows = self.vault.data.tree_rows(&self.search);
+        let colors = theme::row_colors(&rows);
         let all_groups = self.vault.data.all_groups();
         egui::ScrollArea::vertical().id_salt("list_scroll").auto_shrink([false, false]).show(ui, |ui| {
             ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
                 ui.spacing_mut().item_spacing.y = 2.0;
-                for row in &rows {
+                for (row, &color) in rows.iter().zip(&colors) {
                     match row {
                         TreeRow::Group { path, name, depth, expanded, count } => {
                             let selected = self.selected_group.as_deref() == Some(path.as_str());
@@ -456,8 +477,10 @@ impl OpenVault {
                                 if triangle(ui, *expanded).clicked() {
                                     action = Some(TreeAction::ToggleGroup(path.clone()));
                                 }
-                                let label = RichText::new(format!("{name}  ({count})")).strong();
+                                swatch(ui, color);
+                                let label = RichText::new(name.as_str()).strong().color(col(theme::TEXT));
                                 let r = ui.add(egui::Button::selectable(selected, label));
+                                count_badge(ui, *count, color);
                                 if r.clicked() {
                                     action = Some(TreeAction::ClickGroup(path.clone()));
                                 }
@@ -485,6 +508,7 @@ impl OpenVault {
                             ui.horizontal(|ui| {
                                 // Line up with group names (indent + triangle width).
                                 ui.add_space(*depth as f32 * 16.0 + 18.0);
+                                dot(ui, color, 8.0);
                                 let r = ui.add(egui::Button::selectable(selected, name.as_str())).on_hover_text(address);
                                 if r.clicked() {
                                     action = Some(TreeAction::SelectConnection(*id));
@@ -590,14 +614,20 @@ impl OpenVault {
 
     fn group_ui(&mut self, ui: &mut egui::Ui, path: String) {
         let count = self.vault.data.count_in(&path);
-        ui.heading(groups::leaf(&path));
-        ui.label(RichText::new(&path).weak());
+        let color = theme::group_color(&path);
+        ui.horizontal(|ui| {
+            avatar(ui, groups::leaf(&path), color);
+            ui.vertical(|ui| {
+                ui.label(RichText::new(groups::leaf(&path)).size(22.0).strong().color(col(theme::TEXT)));
+                ui.label(RichText::new(&path).color(col(color)));
+            });
+        });
         ui.add_space(4.0);
         ui.label(format!("{count} connection(s) in this group and its subgroups."));
         ui.add_space(12.0);
         let mut action = None;
         ui.horizontal(|ui| {
-            if ui.button("New connection here").clicked() {
+            if ui.add(filled_button("+ New connection here", theme::ACCENT)).clicked() {
                 action = Some(TreeAction::NewConnectionIn(path.clone()));
             }
             if ui.button("New subgroup").clicked() {
@@ -610,7 +640,7 @@ impl OpenVault {
                 action = Some(TreeAction::ExportGroup(path.clone()));
             }
             if self.confirm_delete_group {
-                if ui.button(RichText::new("Really delete group?").color(Color32::from_rgb(190, 30, 30))).clicked() {
+                if ui.add(filled_button("Really delete group?", theme::DANGER)).clicked() {
                     self.vault.data.delete_group(&path);
                     self.selected_group = None;
                     self.confirm_delete_group = false;
@@ -619,7 +649,7 @@ impl OpenVault {
                 if ui.button("Cancel").clicked() {
                     self.confirm_delete_group = false;
                 }
-            } else if ui.button("Delete group").clicked() {
+            } else if ui.add(outline_button("Delete group", theme::DANGER)).clicked() {
                 self.confirm_delete_group = true;
             }
         });
@@ -658,9 +688,9 @@ impl OpenVault {
             if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                 apply = true;
             }
-            ui.add_sized([320.0, 18.0], egui::Label::new(RichText::new(&dlg.error).color(Color32::from_rgb(190, 30, 30))));
+            ui.add_sized([320.0, 18.0], egui::Label::new(RichText::new(&dlg.error).color(col(theme::DANGER))));
             ui.horizontal(|ui| {
-                apply |= ui.button("OK").clicked();
+                apply |= ui.add(filled_button("OK", theme::ACCENT)).clicked();
                 close = ui.button("Cancel").clicked();
             });
         });
@@ -704,7 +734,9 @@ impl OpenVault {
             if let Some(path) = self.selected_group.clone() {
                 self.group_ui(ui, path);
             } else {
-                ui.centered_and_justified(|ui| ui.label(RichText::new("Select a connection, or double-click to connect").weak()));
+                ui.centered_and_justified(|ui| {
+                    ui.label(RichText::new("Select a connection, or double-click to connect").size(15.0).color(col(theme::TEXT_WEAK)))
+                });
             }
             return;
         }
@@ -715,17 +747,40 @@ impl OpenVault {
         let mut do_delete = false;
 
         egui::ScrollArea::vertical().id_salt("detail_scroll").auto_shrink([false, false]).show(ui, |ui| {
-            ui.heading(d.display_name().to_string());
-            ui.add_space(8.0);
+            let color = theme::group_color(&d.group);
+            ui.horizontal(|ui| {
+                avatar(ui, d.display_name(), color);
+                ui.vertical(|ui| {
+                    ui.label(RichText::new(d.display_name().to_string()).size(22.0).strong().color(col(theme::TEXT)));
+                    let sub = if d.group.is_empty() { d.address() } else { format!("{}  \u{b7}  {}", d.group, d.address()) };
+                    ui.label(RichText::new(sub).color(col(color)));
+                });
+            });
+            ui.add_space(10.0);
+            ui.horizontal(|ui| {
+                let h = egui::vec2(0.0, 30.0);
+                do_connect = ui.add(filled_button("\u{25b6}  Connect", theme::CONNECT).min_size(egui::vec2(110.0, 30.0))).clicked();
+                do_save = ui.add(filled_button("Save", theme::ACCENT).min_size(egui::vec2(70.0, 30.0))).clicked();
+                if self.confirm_delete {
+                    do_delete = ui.add(filled_button("Really delete?", theme::DANGER).min_size(h)).clicked();
+                    if ui.add(egui::Button::new("Cancel").min_size(h)).clicked() {
+                        self.confirm_delete = false;
+                    }
+                } else if ui.add(outline_button("Delete", theme::DANGER).min_size(h)).clicked() {
+                    self.confirm_delete = true;
+                }
+            });
+            ui.add_space(12.0);
+            card().show(ui, |ui| {
             // One fixed id for the grid: switching connections must not trigger a new sizing pass.
             egui::Grid::new("conn_form").num_columns(2).spacing([12.0, 8.0]).min_col_width(LABEL_WIDTH).show(ui, |ui| {
                 let text = |ui: &mut egui::Ui, label: &str, value: &mut String, id: &str| {
-                    ui.label(label);
+                    ui.label(field_label(label));
                     ui.add(egui::TextEdit::singleline(value).desired_width(FIELD_WIDTH).id_salt(id));
                     ui.end_row();
                 };
                 text(ui, "Name", &mut d.name, "f_name");
-                ui.label("Group");
+                ui.label(field_label("Group"));
                 let shown = if d.group.is_empty() { "(no group)".to_string() } else { d.group.clone() };
                 egui::ComboBox::from_id_salt("f_group").width(FIELD_WIDTH - 8.0).selected_text(shown).show_ui(ui, |ui| {
                     ui.selectable_value(&mut d.group, String::new(), "(no group)");
@@ -735,12 +790,12 @@ impl OpenVault {
                 });
                 ui.end_row();
                 text(ui, "Host", &mut d.host, "f_host");
-                ui.label("Port");
+                ui.label(field_label("Port"));
                 ui.add(egui::DragValue::new(&mut d.port).range(1..=65535));
                 ui.end_row();
                 text(ui, "Username", &mut d.username, "f_user");
                 text(ui, "Domain", &mut d.domain, "f_domain");
-                ui.label("Password");
+                ui.label(field_label("Password"));
                 ui.horizontal(|ui| {
                     ui.add(
                         egui::TextEdit::singleline(&mut *d.password)
@@ -754,14 +809,14 @@ impl OpenVault {
                 });
                 ui.end_row();
                 text(ui, "RD Gateway", &mut d.gateway, "f_gw");
-                ui.label("Screen");
+                ui.label(field_label("Screen"));
                 ui.horizontal(|ui| {
                     ui.checkbox(&mut d.fullscreen, "Full screen");
                     ui.add_enabled(!d.fullscreen, egui::DragValue::new(&mut d.width).range(640..=7680).suffix(" w"));
                     ui.add_enabled(!d.fullscreen, egui::DragValue::new(&mut d.height).range(480..=4320).suffix(" h"));
                 });
                 ui.end_row();
-                ui.label("Options");
+                ui.label(field_label("Options"));
                 ui.vertical(|ui| {
                     ui.checkbox(&mut d.multimon, "Use all monitors");
                     ui.checkbox(&mut d.redirect_clipboard, "Share clipboard");
@@ -769,23 +824,10 @@ impl OpenVault {
                     ui.checkbox(&mut d.admin_session, "Admin / console session");
                 });
                 ui.end_row();
-                ui.label("Notes");
+                ui.label(field_label("Notes"));
                 ui.add(egui::TextEdit::multiline(&mut d.notes).desired_width(FIELD_WIDTH).desired_rows(3).id_salt("f_notes"));
                 ui.end_row();
             });
-
-            ui.add_space(12.0);
-            ui.horizontal(|ui| {
-                do_connect = ui.add(egui::Button::new(RichText::new("Connect").strong())).clicked();
-                do_save = ui.button("Save").clicked();
-                if self.confirm_delete {
-                    do_delete = ui.button(RichText::new("Really delete?").color(Color32::from_rgb(190, 30, 30))).clicked();
-                    if ui.button("Cancel").clicked() {
-                        self.confirm_delete = false;
-                    }
-                } else if ui.button("Delete").clicked() {
-                    self.confirm_delete = true;
-                }
             });
         });
 
@@ -853,7 +895,7 @@ impl OpenVault {
                 r.request_focus();
             }
             ok |= r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-            ui.add_sized([320.0, 18.0], egui::Label::new(RichText::new(&dlg.error).color(Color32::from_rgb(190, 30, 30))));
+            ui.add_sized([320.0, 18.0], egui::Label::new(RichText::new(&dlg.error).color(col(theme::DANGER))));
             ui.horizontal(|ui| {
                 ok |= ui.button("Import").clicked();
                 close = ui.button("Cancel").clicked();
@@ -906,7 +948,7 @@ impl OpenVault {
             ui.add(egui::TextEdit::singleline(&mut dlg.password).password(true).hint_text("Password for the file").desired_width(f32::INFINITY).id_salt("export_pw"));
             ui.add(egui::TextEdit::singleline(&mut dlg.confirm).password(true).hint_text("Repeat password").desired_width(f32::INFINITY).id_salt("export_pw2"));
             ui.checkbox(&mut dlg.move_after, "Move: remove them from this computer after exporting");
-            ui.add_sized([360.0, 18.0], egui::Label::new(RichText::new(&dlg.error).color(Color32::from_rgb(190, 30, 30))));
+            ui.add_sized([360.0, 18.0], egui::Label::new(RichText::new(&dlg.error).color(col(theme::DANGER))));
             ui.horizontal(|ui| {
                 ok = ui.button("Export...").clicked();
                 close = ui.button("Cancel").clicked();
@@ -974,7 +1016,7 @@ impl OpenVault {
             ui.add(egui::TextEdit::singleline(confirm).password(true).hint_text("Repeat").desired_width(f32::INFINITY));
             ui.add_space(8.0);
             ui.horizontal(|ui| {
-                apply = ui.button("Change").clicked();
+                apply = ui.add(filled_button("Change", theme::ACCENT)).clicked();
                 close = ui.button("Cancel").clicked();
             });
         });
@@ -1013,3 +1055,131 @@ fn triangle(ui: &mut egui::Ui, expanded: bool) -> egui::Response {
     ui.painter().add(egui::Shape::convex_polygon(points, color, egui::Stroke::NONE));
     response
 }
+
+// ---------- Theme ----------
+
+fn col(c: Rgb) -> Color32 {
+    Color32::from_rgb(c.0, c.1, c.2)
+}
+
+/// `c` mixed with the window background; `amount` 0 = background, 1 = `c`.
+fn tint(c: Rgb, amount: f32) -> Color32 {
+    let mix = |a: u8, b: u8| (b as f32 + (a as f32 - b as f32) * amount).round() as u8;
+    let bg = theme::BG;
+    Color32::from_rgb(mix(c.0, bg.0), mix(c.1, bg.1), mix(c.2, bg.2))
+}
+
+/// Colourful light theme, shared with the Slint app through `myrdc_core::theme`.
+fn apply_theme(style: &mut egui::Style) {
+    use egui::{CornerRadius, Stroke};
+    let v = &mut style.visuals;
+    v.dark_mode = false;
+    v.panel_fill = col(theme::BG);
+    v.window_fill = col(theme::CARD);
+    v.window_stroke = Stroke::new(1.0, col(theme::BORDER));
+    v.window_corner_radius = CornerRadius::same(12);
+    v.menu_corner_radius = CornerRadius::same(8);
+    v.faint_bg_color = col(theme::CARD);
+    v.extreme_bg_color = col(theme::CARD);
+    v.text_edit_bg_color = Some(col(theme::CARD));
+    v.code_bg_color = col(theme::BG);
+    v.hyperlink_color = col(theme::ACCENT);
+    v.error_fg_color = col(theme::DANGER);
+    v.warn_fg_color = col(theme::GROUP_COLORS[2]);
+    v.weak_text_color = Some(col(theme::TEXT_WEAK));
+    v.selection.bg_fill = tint(theme::ACCENT, 0.16);
+    v.selection.stroke = Stroke::new(1.0, col(theme::ACCENT));
+
+    let w = &mut v.widgets;
+    w.noninteractive.bg_fill = col(theme::CARD);
+    w.noninteractive.weak_bg_fill = col(theme::CARD);
+    w.noninteractive.bg_stroke = Stroke::new(1.0, col(theme::BORDER));
+    w.noninteractive.fg_stroke = Stroke::new(1.0, col(theme::TEXT));
+    w.inactive.bg_fill = col(theme::BORDER);
+    w.inactive.weak_bg_fill = col(theme::CARD);
+    w.inactive.bg_stroke = Stroke::new(1.0, col(theme::BORDER));
+    w.inactive.fg_stroke = Stroke::new(1.0, col(theme::TEXT));
+    w.hovered.bg_fill = col(theme::HOVER);
+    w.hovered.weak_bg_fill = col(theme::HOVER);
+    w.hovered.bg_stroke = Stroke::new(1.0, tint(theme::ACCENT, 0.8));
+    w.hovered.fg_stroke = Stroke::new(1.5, col(theme::TEXT));
+    w.active.bg_fill = tint(theme::ACCENT, 0.7);
+    w.active.weak_bg_fill = tint(theme::ACCENT, 0.7);
+    w.active.bg_stroke = Stroke::new(1.0, col(theme::ACCENT));
+    w.active.fg_stroke = Stroke::new(1.5, Color32::WHITE);
+    w.open = w.hovered;
+    for wv in [&mut w.noninteractive, &mut w.inactive, &mut w.hovered, &mut w.active, &mut w.open] {
+        wv.corner_radius = CornerRadius::same(6);
+    }
+    style.spacing.button_padding = egui::vec2(10.0, 5.0);
+    style.spacing.item_spacing = egui::vec2(8.0, 6.0);
+}
+
+/// Rounded panel used for forms and the lock screen.
+fn card() -> egui::Frame {
+    egui::Frame::new()
+        .fill(col(theme::CARD))
+        .stroke(egui::Stroke::new(1.0, col(theme::BORDER)))
+        .corner_radius(10)
+        .inner_margin(egui::Margin::same(16))
+}
+
+/// Button filled with a colour, white text.
+fn filled_button(text: &str, color: Rgb) -> egui::Button<'static> {
+    egui::Button::new(RichText::new(text.to_string()).strong().color(Color32::WHITE)).fill(col(color)).stroke(egui::Stroke::NONE)
+}
+
+/// Button with a coloured border and text, for less important or risky actions.
+fn outline_button(text: &str, color: Rgb) -> egui::Button<'static> {
+    egui::Button::new(RichText::new(text.to_string()).color(col(color)))
+        .fill(tint(color, 0.07))
+        .stroke(egui::Stroke::new(1.0, tint(color, 0.7)))
+}
+
+fn field_label(text: &str) -> RichText {
+    RichText::new(text).color(col(theme::TEXT_WEAK))
+}
+
+fn dot(ui: &mut egui::Ui, color: Rgb, size: f32) {
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(size, size), egui::Sense::hover());
+    ui.painter().circle_filled(rect.center(), size / 2.0, col(color));
+}
+
+/// Small rounded square in front of a group name.
+fn swatch(ui: &mut egui::Ui, color: Rgb) {
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
+    ui.painter().rect_filled(rect, 3, col(color));
+}
+
+/// Number of connections in a group, as a coloured pill.
+fn count_badge(ui: &mut egui::Ui, count: usize, color: Rgb) {
+    let text = RichText::new(count.to_string()).small().strong().color(col(color));
+    egui::Frame::new().fill(tint(color, 0.14)).corner_radius(8).inner_margin(egui::Margin::symmetric(6, 0)).show(ui, |ui| {
+        ui.label(text);
+    });
+}
+
+/// Round coloured badge with the first letter of a name.
+fn avatar(ui: &mut egui::Ui, name: &str, color: Rgb) {
+    let size = 44.0;
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(size, size), egui::Sense::hover());
+    let p = ui.painter();
+    p.circle_filled(rect.center(), size / 2.0, tint(color, 0.14));
+    p.circle_stroke(rect.center(), size / 2.0 - 1.0, egui::Stroke::new(2.0, col(color)));
+    let letter: String =
+        name.chars().find(|c| c.is_alphanumeric()).map(|c| c.to_uppercase().collect()).unwrap_or_else(|| "?".into());
+    p.text(rect.center(), egui::Align2::CENTER_CENTER, letter, egui::FontId::proportional(20.0), col(color));
+}
+
+/// App logo: a violet/cyan rounded square with a small "screen" inside.
+fn logo(ui: &mut egui::Ui, size: f32) {
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(size, size), egui::Sense::hover());
+    let p = ui.painter();
+    let r = (size * 0.25) as u8;
+    p.rect_filled(rect, r, col(theme::ACCENT));
+    let half = egui::Rect::from_min_max(rect.center(), rect.max);
+    p.rect_filled(half, egui::CornerRadius { nw: 0, ne: 0, sw: 0, se: r }, col(theme::GROUP_COLORS[1]));
+    let screen = rect.shrink(size * 0.24);
+    p.rect_stroke(screen, (size * 0.08) as u8, egui::Stroke::new((size * 0.07).max(1.5), Color32::WHITE), egui::StrokeKind::Inside);
+}
+
