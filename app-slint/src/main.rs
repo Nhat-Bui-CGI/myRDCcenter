@@ -639,7 +639,21 @@ fn set_scale(window: &slint::Window, scale: f32) {
     window.dispatch_event(WindowEvent::ScaleFactorChanged { scale_factor: scale });
     let size = window.size().to_logical(scale);
     window.dispatch_event(WindowEvent::Resized { size });
+    // A larger scale can make the window smaller than its minimum size
+    // (MainWindow min-width / min-height). Windows doesn't grow it by itself.
+    let (min_w, min_h) = (MIN_WIDTH * scale, MIN_HEIGHT * scale);
+    let phys = window.size();
+    if (phys.width as f32) < min_w || (phys.height as f32) < min_h {
+        window.set_size(slint::PhysicalSize::new(
+            phys.width.max(min_w.ceil() as u32),
+            phys.height.max(min_h.ceil() as u32),
+        ));
+    }
 }
+
+/// Same as `min-width` / `min-height` of MainWindow in app.slint.
+const MIN_WIDTH: f32 = 720.0;
+const MIN_HEIGHT: f32 = 440.0;
 
 const ALL_CONNECTIONS: &str = "All connections";
 
@@ -706,6 +720,7 @@ fn lock(ui: &MainWindow, s: &Shared) {
     ui.set_has_draft(false);
     ui.set_rows(ModelRc::default());
     ui.set_change_pw_open(false);
+    ui.set_settings_open(false);
     ui.set_group_dialog_open(false);
     ui.set_selected_group("".into());
     ui.set_show_password(false);

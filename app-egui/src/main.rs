@@ -81,6 +81,8 @@ struct OpenVault {
     status: String,
     confirm_delete: bool,
     change_pw: Option<(String, String)>,
+    /// The Settings dialog is open.
+    settings_open: bool,
     remembered: bool,
     /// Group selected in the tree (when no connection is selected).
     selected_group: Option<String>,
@@ -389,6 +391,7 @@ impl OpenVault {
             status: String::new(),
             confirm_delete: false,
             change_pw: None,
+            settings_open: false,
             remembered,
             selected_group: None,
             group_dialog: None,
@@ -451,36 +454,12 @@ impl OpenVault {
                 if ui.button("Export").on_hover_text("Copy or move connections to another computer").clicked() {
                     self.open_export(None);
                 }
-                if ui.button("Backup").clicked() {
-                    self.backup();
-                }
-                if ui.button("Change password").clicked() {
-                    self.change_pw = Some(Default::default());
-                }
-                ui.separator();
-                if keystore::SUPPORTED {
-                    let r = ui.checkbox(&mut self.remembered, "Remember on this computer").on_hover_text(keystore::label());
-                    if r.changed() {
-                        self.status = match self.vault.set_remembered(self.remembered) {
-                            Ok(()) if self.remembered => "The vault now opens with your computer login".into(),
-                            Ok(()) => "The vault now asks for the master password".into(),
-                            Err(e) => {
-                                self.remembered = false;
-                                e
-                            }
-                        };
-                    }
-                    ui.separator();
-                }
-                ui.label("Auto-lock (min):");
-                let mut mins = self.vault.data.settings.auto_lock_minutes;
-                if ui.add(egui::DragValue::new(&mut mins).range(0..=240)).changed() {
-                    self.vault.data.settings.auto_lock_minutes = mins;
-                    let _ = self.vault.save();
-                }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.add(outline_button("Lock", theme::DANGER)).clicked() {
                         lock = true;
+                    }
+                    if ui.button("Settings").on_hover_text("Backup, master password, auto-lock").clicked() {
+                        self.settings_open = true;
                     }
                     ui.separator();
                     if ui.small_button("A+").on_hover_text("Larger text (Ctrl +)").clicked() {
@@ -516,6 +495,7 @@ impl OpenVault {
         let main = egui::Frame::new().fill(col(theme::BG)).inner_margin(egui::Margin::same(16));
         egui::CentralPanel::default().frame(main).show(ui, |ui| self.detail_ui(ui));
 
+        self.settings_ui(ui);
         self.change_password_ui(ui);
         self.group_dialog_ui(ui);
         self.export_dialog_ui(ui);
@@ -1093,6 +1073,59 @@ impl OpenVault {
             Ok(()) => format!("Encrypted backup saved to {}", dest.display()),
             Err(e) => e.to_string(),
         };
+    }
+
+    fn settings_ui(&mut self, ui: &mut egui::Ui) {
+        if !self.settings_open {
+            return;
+        }
+        let mut close = false;
+        let r = egui::Modal::new(egui::Id::unique("settings")).show(ui.ctx(), |ui| {
+            ui.set_width(380.0);
+            ui.heading("Settings");
+            ui.add_space(8.0);
+            ui.label(RichText::new("Vault").strong());
+            ui.horizontal(|ui| {
+                if ui.button("Backup...").clicked() {
+                    close = true;
+                    self.backup();
+                }
+                if ui.button("Change password").clicked() {
+                    close = true;
+                    self.change_pw = Some(Default::default());
+                }
+            });
+            if keystore::SUPPORTED {
+                let r = ui.checkbox(&mut self.remembered, "Remember on this computer").on_hover_text(keystore::label());
+                if r.changed() {
+                    self.status = match self.vault.set_remembered(self.remembered) {
+                        Ok(()) if self.remembered => "The vault now opens with your computer login".into(),
+                        Ok(()) => "The vault now asks for the master password".into(),
+                        Err(e) => {
+                            self.remembered = false;
+                            e
+                        }
+                    };
+                }
+            }
+            ui.horizontal(|ui| {
+                ui.label("Auto-lock after (minutes, 0 = never):");
+                let mut mins = self.vault.data.settings.auto_lock_minutes;
+                if ui.add(egui::DragValue::new(&mut mins).range(0..=240)).changed() {
+                    self.vault.data.settings.auto_lock_minutes = mins;
+                    let _ = self.vault.save();
+                }
+            });
+            ui.add_space(8.0);
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+                if ui.add(filled_button("Close", theme::ACCENT)).clicked() {
+                    close = true;
+                }
+            });
+        });
+        if close || r.should_close() {
+            self.settings_open = false;
+        }
     }
 
     fn change_password_ui(&mut self, ui: &mut egui::Ui) {

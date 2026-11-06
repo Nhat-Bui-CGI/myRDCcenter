@@ -226,6 +226,7 @@ export component MainWindow inherits Window {
     background: Theme.bg;
     preferred-width: 1000px;
     preferred-height: 720px;
+    // Keep min-width / min-height the same as MIN_WIDTH / MIN_HEIGHT in main.rs.
     min-width: 720px;
     in-out property <length> sidebar-width: 290px;
     min-height: 440px;
@@ -244,6 +245,7 @@ export component MainWindow inherits Window {
     in-out property <bool> show-password;
     in-out property <bool> confirm-delete;
     in-out property <bool> change-pw-open;
+    in-out property <bool> settings-open;
     // Groups
     in property <[string]> group-names;      // for the Group picker; first entry is "(no group)"
     in property <string> selected-group;     // path of the selected group row
@@ -328,25 +330,11 @@ export component MainWindow inherits Window {
                 Button { text: "New group"; clicked => { root.new-group(); } }
                 Button { text: "Import"; clicked => { root.import-rdp(); } }
                 Button { text: "Export"; clicked => { root.export-request(""); } }
-                Button { text: "Backup"; clicked => { root.backup(); } }
-                Button { text: "Change password"; clicked => { root.change-pw-open = true; } }
-                if root.remember-supported: CheckBox {
-                    text: "Remember on this computer";
-                    checked <=> root.remembered;
-                    toggled => { root.set-remember(self.checked); }
-                }
-                Text { text: "Auto-lock (min):"; color: Theme.text-weak; vertical-alignment: center; }
-                SpinBox {
-                    width: 90px;
-                    minimum: 0;
-                    maximum: 240;
-                    value <=> root.auto-lock-minutes;
-                    edited(v) => { root.auto-lock-changed(v); }
-                }
                 Rectangle { horizontal-stretch: 1; }
                 Button { text: "A-"; clicked => { root.text-size(-1); } }
                 Button { text: root.text-size-label; clicked => { root.text-size(0); } }
                 Button { text: "A+"; clicked => { root.text-size(1); } }
+                Button { text: "Settings"; clicked => { root.settings-open = true; } }
                 ColorButton { text: "Lock"; tone: Theme.danger; outline: true; clicked => { root.lock(); } }
             }
         }
@@ -356,7 +344,8 @@ export component MainWindow inherits Window {
             vertical-stretch: 1;
             // Connection list
             Rectangle {
-                width: root.sidebar-width;
+                // Narrow window: the list gets smaller first, so the details keep their room.
+                width: max(180px, min(root.sidebar-width, root.width - 7px - 460px));
                 background: Theme.panel;
                 VerticalBox {
                     LineEdit {
@@ -451,7 +440,7 @@ export component MainWindow inherits Window {
                     mouse-cursor: ew-resize;
                     moved => {
                         if (self.pressed) {
-                            root.sidebar-width = clamp(root.sidebar-width + self.mouse-x - self.pressed-x, 180px, root.width - 540px);
+                            root.sidebar-width = clamp(root.sidebar-width + self.mouse-x - self.pressed-x, 180px, root.width - 467px);
                         }
                     }
                 }
@@ -536,8 +525,10 @@ export component MainWindow inherits Window {
                         alignment: start;
                         padding-left: 16px;
                         padding-bottom: 16px;
+                        // As wide as the room allows, up to 660px.
                         Card {
-                            width: min(660px, root.width - root.sidebar-width - 40px);
+                            horizontal-stretch: 1;
+                            max-width: 660px;
                             VerticalLayout {
                                 alignment: start;
                                 padding: 16px;
@@ -556,11 +547,18 @@ export component MainWindow inherits Window {
                                 Field { label: "RD Gateway"; LineEdit { text <=> root.draft.gateway; } }
                                 Field {
                                     label: "Screen";
-                                    CheckBox { text: "Full screen"; checked <=> root.draft.fullscreen; }
-                                    SpinBox { width: 120px; enabled: !root.draft.fullscreen; minimum: 640; maximum: 7680; value <=> root.draft.width; }
-                                    Text { text: "x"; color: Theme.text-weak; vertical-alignment: center; }
-                                    SpinBox { width: 120px; enabled: !root.draft.fullscreen; minimum: 480; maximum: 4320; value <=> root.draft.height; }
-                                    Rectangle {}
+                                    // Size on its own line, so the row fits a narrow window.
+                                    VerticalLayout {
+                                        spacing: 4px;
+                                        CheckBox { text: "Full screen"; checked <=> root.draft.fullscreen; }
+                                        HorizontalLayout {
+                                            spacing: 8px;
+                                            alignment: start;
+                                            SpinBox { width: 120px; enabled: !root.draft.fullscreen; minimum: 640; maximum: 7680; value <=> root.draft.width; }
+                                            Text { text: "x"; color: Theme.text-weak; vertical-alignment: center; }
+                                            SpinBox { width: 120px; enabled: !root.draft.fullscreen; minimum: 480; maximum: 4320; value <=> root.draft.height; }
+                                        }
+                                    }
                                 }
                                 Field {
                                     label: "Options";
@@ -599,6 +597,51 @@ export component MainWindow inherits Window {
                 vertical-alignment: center;
                 overflow: elide;
                 width: parent.width - 36px;
+            }
+        }
+    }
+
+    // Settings dialog: backup, master password, remember, auto-lock
+    if root.settings-open && !root.locked: Rectangle {
+        background: #1b1e2e80;
+        TouchArea { clicked => { root.settings-open = false; } }
+        Card {
+            width: 400px;
+            height: self.preferred-height;
+            border-radius: 12px;
+            TouchArea {}
+            VerticalBox {
+                alignment: start;
+                DialogTitle { text: "Settings"; }
+                Text { text: "Vault"; font-weight: 700; color: Theme.text; }
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+                    Button { text: "Backup..."; clicked => { root.settings-open = false; root.backup(); } }
+                    Button { text: "Change password"; clicked => { root.settings-open = false; root.change-pw-open = true; } }
+                }
+                if root.remember-supported: CheckBox {
+                    text: "Remember on this computer";
+                    checked <=> root.remembered;
+                    toggled => { root.set-remember(self.checked); }
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+                    Text { text: "Auto-lock after (minutes, 0 = never):"; color: Theme.text-weak; vertical-alignment: center; }
+                    SpinBox {
+                        width: 100px;
+                        minimum: 0;
+                        maximum: 240;
+                        value <=> root.auto-lock-minutes;
+                        edited(v) => { root.auto-lock-changed(v); }
+                    }
+                }
+                Rectangle { height: 4px; }
+                HorizontalLayout {
+                    alignment: end;
+                    ColorButton { text: "Close"; clicked => { root.settings-open = false; } }
+                }
             }
         }
     }

@@ -131,17 +131,24 @@ The app keeps the text size on this computer. It does not go into the vault or i
 
 ## Keep your vault safe
 
-- **Backup** saves an encrypted copy of the vault. Do this regularly.
-- **Change password** changes the master password.
-- **Lock** closes the vault. The app asks for the master password again.
-- **Auto-lock (min)** locks the vault after some minutes with no activity. Set it to 0 to stop auto-lock.
+**Lock** in the toolbar closes the vault. The app asks for the master password again.
+
+The other vault settings are in **Settings**:
+
+| Setting | Use |
+|---|---|
+| **Backup...** | Saves an encrypted copy of the vault. Do this regularly. |
+| **Change password** | Changes the master password. |
+| **Remember on this computer** | Opens the vault with your computer login. See below. |
+| **Auto-lock after** | Locks the vault after some minutes with no activity. Set it to 0 to stop auto-lock. |
 
 ### Remember on this computer
 
 On Windows and macOS, you can open the vault without the master password.
 
-1. Select **Remember on this computer**.
-2. The next time, the app opens the vault with your computer login.
+1. Click **Settings**.
+2. Select **Remember on this computer**.
+3. The next time, the app opens the vault with your computer login.
 
 Anybody who can log in to your computer as you can then open the vault. To stop this, clear **Remember on this computer**.
 
